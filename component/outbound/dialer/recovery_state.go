@@ -345,10 +345,10 @@ func (m *dialerRecoveryManager) notifyPeriodicCheckResultByIndex(protoIdx int, p
 	if state.stableSuccessCount >= 2 {
 		state.stableSuccessCount = 0
 		state.backoffLevel--
-		m.owner.Log.WithFields(logrus.Fields{
+		/*m.owner.Log.WithFields(logrus.Fields{
 			"dialer":        m.owner.Property().Name,
 			"proto":         proto,
 			"backoff_level": state.backoffLevel,
-		}).Infoln("Recovery confirmed: long-term stability detected, backoff level decreased")
+		}).Infoln("Recovery confirmed: long-term stability detected, backoff level decreased")*/
 	}
 }

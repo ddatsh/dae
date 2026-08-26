@@ -1563,6 +1563,7 @@ func (c *DnsController) updateDnsCache(msg *dnsmessage.Msg, responseCacheKey str
 	if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		c.log.WithFields(logrus.Fields{
 			"_qname": q.Name,
+			"type":   dnsmessage.Type(q.Qtype).String(),
 			"rcode":  msg.Rcode,
 			"ans":    FormatDnsRsc(msg.Answer),
 		}).Tracef("Update DNS record cache")
@@ -1945,6 +1946,7 @@ func (c *DnsController) logDnsForwardFailure(upstream *dns.Upstream, dialArg *di
 		}
 	}
 	c.log.WithError(err).WithFields(fields).Warn("DNS forward to upstream failed")
+	limiter.Record()
 }
 
 func (c *DnsController) shouldRetireCachedDnsForwarder(upstream *dns.Upstream, dialArg *dialArgument, entry *cachedDnsForwarder, err error) bool {
@@ -2242,14 +2244,28 @@ func (c *DnsController) HandleWithResponseWriter_(ctx context.Context, dnsMessag
 			// Format includes "-> dest:port" so CI grep can verify routing.
 			if c.log.IsLevelEnabled(logrus.DebugLevel) && len(dnsMessage.Question) > 0 && req != nil {
 				q := dnsMessage.Question[0]
-				c.log.WithFields(logrus.Fields{
-					"network": "udp(dns)",
-					"_qname":  strings.ToLower(q.Name),
-					"qtype":   QtypeToString(q.Qtype),
-				}).Debugf("%v <-> %v (cache)",
-					RefineSourceToShow(req.realSrc, req.realDst.Addr()),
-					RefineAddrPortToShow(req.realDst),
-				)
+				if checkCache(q.Name) {
+					srcToShow := RefineSourceToShow(req.realSrc, req.realDst.Addr())
+					if srcToShow[0] == '[' {
+						c.log.WithFields(logrus.Fields{
+							"network": "udp(dns)",
+							"_qname":  strings.ToLower(q.Name),
+							"qtype":   QtypeToString(q.Qtype),
+						}).Debugf(" \b%s <-> %v (cache)",
+							srcToShow,
+							RefineAddrPortToShow(req.realDst),
+						)
+					} else {
+						c.log.WithFields(logrus.Fields{
+							"network": "udp(dns)",
+							"_qname":  strings.ToLower(q.Name),
+							"qtype":   QtypeToString(q.Qtype),
+						}).Debugf("%s <-> %v (cache)",
+							srcToShow,
+							RefineAddrPortToShow(req.realDst),
+						)
+					}
+				}
 			}
 			return nil
 		}
@@ -2295,7 +2311,10 @@ func (c *DnsController) HandleWithResponseWriter_(ctx context.Context, dnsMessag
 		}
 
 		// If no responseWriter (internal UDP path), pack and send directly.
-		data, err := respMsg.Pack()
+		// Reuse the DNS response buffer pool; data is consumed synchronously by the send.
+		bufPtr := dnsResponseBufPool.Get().(*[]byte)
+		defer dnsResponseBufPool.Put(bufPtr)
+		data, err := respMsg.PackBuffer((*bufPtr)[:cap(*bufPtr)])
 		if err != nil {
 			return fmt.Errorf("pack DNS packet: %w", err)
 		}
@@ -2464,13 +2483,22 @@ func (c *DnsController) handleWithResponseWriter_(
 			upstreamName = upstream.String()
 		}
 		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
+			"question": dnsMessage.Question[0].Name,
+			"type":     dnsmessage.Type(dnsMessage.Question[0].Qtype).String(),
 			"upstream": upstreamName,
 		}).Traceln("Request to DNS upstream")
 	}
 
+	if dnsMessage.Truncated {
+		dnsMessage.Truncated = false
+		dnsMessage.AuthenticatedData = true
+	}
+
 	// Re-pack DNS packet.
-	data, err := dnsMessage.Pack()
+	// Pack into a pooled DNS response buffer; data is consumed synchronously by the send.
+	bufPtr := dnsResponseBufPool.Get().(*[]byte)
+	defer dnsResponseBufPool.Put(bufPtr)
+	data, err := dnsMessage.PackBuffer((*bufPtr)[:cap(*bufPtr)])
 	if err != nil {
 		return fmt.Errorf("pack DNS packet: %w", err)
 	}
@@ -2549,10 +2577,13 @@ func (c *DnsController) sendDnsErrorResponse_(
 	dnsMessage.RecursionAvailable = true
 	dnsMessage.Truncated = false
 	dnsMessage.Compress = true
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
-		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
-		}).Traceln(traceMsg)
+	if checkCache(dnsMessage.Question[0].Name) {
+		if c.log.IsLevelEnabled(logrus.DebugLevel) {
+			c.log.WithFields(logrus.Fields{
+				"question": dnsMessage.Question[0].Name,
+				"type":     dnsmessage.Type(dnsMessage.Question[0].Qtype).String(),
+			}).Debug(traceMsg)
+		}
 	}
 	if responseWriter != nil {
 		return responseWriter.WriteMsg(dnsMessage)
@@ -2560,7 +2591,10 @@ func (c *DnsController) sendDnsErrorResponse_(
 	if req == nil || req.lConn == nil {
 		return nil
 	}
-	data, err := dnsMessage.Pack()
+	// Pack into a pooled DNS response buffer; data is consumed synchronously by the send.
+	bufPtr := dnsResponseBufPool.Get().(*[]byte)
+	defer dnsResponseBufPool.Put(bufPtr)
+	data, err := dnsMessage.PackBuffer((*bufPtr)[:cap(*bufPtr)])
 	if err != nil {
 		return fmt.Errorf("pack DNS packet: %w", err)
 	}
@@ -2593,7 +2627,10 @@ func (c *DnsController) sendDnsTruncatedResponse_(dnsMessage *dnsmessage.Msg, re
 	if req == nil || req.lConn == nil {
 		return nil
 	}
-	data, err := dnsMessage.Pack()
+	// Pack into a pooled DNS response buffer; data is consumed synchronously by the send.
+	bufPtr := dnsResponseBufPool.Get().(*[]byte)
+	defer dnsResponseBufPool.Put(bufPtr)
+	data, err := dnsMessage.PackBuffer((*bufPtr)[:cap(*bufPtr)])
 	if err != nil {
 		return fmt.Errorf("pack DNS packet: %w", err)
 	}
@@ -2756,7 +2793,8 @@ func (c *DnsController) dialSend(
 		// Accept.
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
-				"question": respMsg.Question,
+				"question": respMsg.Question[0].Name,
+				"type":     dnsmessage.Type(respMsg.Question[0].Qtype).String(),
 				"upstream": upstreamName,
 			}).Traceln("Accept")
 		}
@@ -2765,7 +2803,8 @@ func (c *DnsController) dialSend(
 		respMsg.Answer = nil
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
-				"question": respMsg.Question,
+				"question": respMsg.Question[0].Name,
+				"type":     dnsmessage.Type(respMsg.Question[0].Qtype).String(),
 				"upstream": upstreamName,
 			}).Traceln("Reject with empty answer")
 		}
@@ -2798,20 +2837,34 @@ func (c *DnsController) dialSend(
 		fields := logrus.Fields{
 			"network":  networkType.String(),
 			"outbound": usedDialArg.bestOutbound.Name,
-			"policy":   usedDialArg.bestOutbound.GetSelectionPolicy(),
-			"dialer":   usedDialArg.bestDialer.Property().Name,
-			"_qname":   qname,
-			"qtype":    qtype,
-			"pid":      req.routingResult.Pid,
-			"dscp":     req.routingResult.Dscp,
-			"pname":    ProcessName2String(req.routingResult.Pname[:]),
-			"mac":      Mac2String(req.routingResult.Mac[:]),
+			//"policy":   usedDialArg.bestOutbound.GetSelectionPolicy(),
+			"dialer": usedDialArg.bestDialer.Property().Name,
+			"_qname": qname,
+			"qtype":  qtype,
+			//"pid":      req.routingResult.Pid,
+			//"dscp":     req.routingResult.Dscp,
+			//"pname":    ProcessName2String(req.routingResult.Pname[:]),
+			//"mac": Mac2String(req.routingResult.Mac[:]),
 		}
 		switch upstreamIndex {
 		case consts.DnsResponseOutboundIndex_Accept:
-			c.log.WithFields(fields).Debugf("%v <-> %v", RefineSourceToShow(req.realSrc, req.realDst.Addr()), RefineAddrPortToShow(usedDialArg.bestTarget))
+			if checkCache(qname) {
+				srcToShow := RefineSourceToShow(req.realSrc, req.realDst.Addr())
+				if srcToShow[0] == '[' {
+					c.log.WithFields(fields).Debugf(" \b%v <-> %v", srcToShow, RefineAddrPortToShow(usedDialArg.bestTarget))
+				} else {
+					c.log.WithFields(fields).Debugf("%v <-> %v", srcToShow, RefineAddrPortToShow(usedDialArg.bestTarget))
+				}
+
+			}
 		case consts.DnsResponseOutboundIndex_Reject:
-			c.log.WithFields(fields).Debugf("%v -> reject", RefineSourceToShow(req.realSrc, req.realDst.Addr()))
+			srcToShow := RefineSourceToShow(req.realSrc, req.realDst.Addr())
+			if srcToShow[0] == '[' {
+				c.log.WithFields(fields).Debugf(" \b%v -> reject", srcToShow)
+			} else {
+				c.log.WithFields(fields).Debugf("%v -> reject", srcToShow)
+			}
+
 		default:
 			return fmt.Errorf("unknown upstream: %v", upstreamIndex.String())
 		}
@@ -2842,7 +2895,10 @@ func (c *DnsController) dialSend(
 			}
 			return responseWriter.WriteMsg(respMsg)
 		}
-		data, err = respMsg.Pack()
+		// Pack into a pooled DNS response buffer; data is consumed synchronously by the send.
+		bufPtr := dnsResponseBufPool.Get().(*[]byte)
+		defer dnsResponseBufPool.Put(bufPtr)
+		data, err = respMsg.PackBuffer((*bufPtr)[:cap(*bufPtr)])
 		if err != nil {
 			return err
 		}

@@ -14,14 +14,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/daeuniverse/dae/common"
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/component/daedns"
 	"github.com/daeuniverse/dae/config"
 	D "github.com/daeuniverse/outbound/dialer"
-	stickyip "github.com/daeuniverse/outbound/dialer/stickyip"
+	"github.com/daeuniverse/outbound/dialer/stickyip"
 	"github.com/daeuniverse/outbound/netproxy"
 	"github.com/sirupsen/logrus"
 )
@@ -272,7 +271,7 @@ func NewDialerContext(ctx context.Context, dialer netproxy.Dialer, option *Globa
 	d.initRecoveryDetection(option.CheckInterval)
 
 	option.Log.WithField("dialer", d.Property().Name).
-		WithField("p", unsafe.Pointer(d)).
+		//  WithField("p", unsafe.Pointer(d)).
 		Traceln("NewDialer")
 	return d
 }

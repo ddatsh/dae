@@ -42,15 +42,15 @@ const (
 
 func buildTCPLinkLogFields(res *proxyDialResult, dialParam *proxyDialParam, dst netip.AddrPort, domain string, annotateOffload bool, offloaded bool, offloadReason string) logrus.Fields {
 	fields := logrus.Fields{
-		"network":  res.OrigNetworkType,
-		"outbound": res.Outbound.Name,
-		"policy":   res.Outbound.GetSelectionPolicy(),
-		"dialer":   res.Dialer.Property().Name,
-		"sniffed":  domain,
-		"ip":       RefineAddrPortToShow(dst),
-		"dscp":     dialParam.Dscp,
-		"pname":    ProcessName2String(dialParam.ProcessName[:]),
-		"mac":      Mac2String(dialParam.Mac[:]),
+		//"network":  res.OrigNetworkType,
+		//"outbound": res.Outbound.Name,
+		//"policy":   res.Outbound.GetSelectionPolicy(),
+		"dialer": res.Dialer.Property().Name,
+		//"sniffed":  domain,
+		//"ip":    RefineAddrPortToShow(dst),
+		//"dscp":  dialParam.Dscp,
+		//"pname": ProcessName2String(dialParam.ProcessName[:]),
+		//"mac":   Mac2String(dialParam.Mac[:]),
 	}
 	if !annotateOffload {
 		return fields
@@ -161,12 +161,12 @@ func (c *ControlPlane) handleConn(ctx context.Context, lConn net.Conn) (err erro
 		cacheKey := newTcpSniffNegKey(dst, routingResult)
 		now := time.Now()
 		if c.shouldSkipTcpSniffByNegativeCache(cacheKey, now) {
-			if c.log.IsLevelEnabled(logrus.TraceLevel) {
+			/*if c.log.IsLevelEnabled(logrus.TraceLevel) {
 				c.log.WithFields(logrus.Fields{
 					"src": src.String(),
 					"dst": dst.String(),
 				}).Trace("Skip TCP sniffing by negative cache")
-			}
+			}*/
 		} else {
 			probeConn, prefetched, ready, probeErr := prefetchForTcpSniff(lConn, c.sniffingTimeout, tcpSniffPrefetchBytes)
 			if probeErr != nil {
@@ -256,7 +256,13 @@ func (c *ControlPlane) handleConn(ctx context.Context, lConn net.Conn) (err erro
 	// Log new TCP connections at Info level for visibility (consistent with UDP behavior)
 	// Note: TCP connections are inherently "new" at this point, unlike UDP endpoints which may be reused
 	if c.log.IsLevelEnabled(logrus.InfoLevel) {
-		c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Infof("%v <-> %v", RefineSourceToShow(src, dst.Addr()), res.DialTarget)
+        srcToShow:=RefineSourceToShow(src, dst.Addr())
+        if srcToShow[0] == '[' {
+            c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Infof(" \b%v <-> %v", srcToShow, res.DialTarget)
+        }else {
+            c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Infof("%v <-> %v", srcToShow, res.DialTarget)
+        }
+
 	}
 
 	if offloaded {
@@ -270,12 +276,12 @@ func (c *ControlPlane) handleConn(ctx context.Context, lConn net.Conn) (err erro
 		return fmt.Errorf("handleTCP relay error: %w", err)
 	}
 
-	if c.log.IsLevelEnabled(logrus.DebugLevel) {
+	/*if c.log.IsLevelEnabled(logrus.DebugLevel) {
 		c.log.WithFields(logrus.Fields{
 			"src": src.String(),
 			"dst": dst.String(),
 		}).Debug("TCP relay completed")
-	}
+	}*/
 
 	return nil
 }

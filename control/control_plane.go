@@ -452,8 +452,8 @@ func newControlPlaneWithContextOptions(
 		// Conn-state maps are preserved across in-process reload via object handoff,
 		// so fresh loads should not inherit stale bpffs pins from previous processes.
 		cleanupPinnedConnStateMapFiles(log, pinPath)
-		log.Infof("Loading eBPF programs and maps into the kernel...")
-		log.Infof("The loading process takes about 120MB free memory, which will be released after loading. Insufficient memory will cause loading failure.")
+		//log.Infof("Loading eBPF programs and maps into the kernel...")
+		//log.Infof("The loading process takes about 120MB free memory, which will be released after loading. Insufficient memory will cause loading failure.")
 	}
 	// var bpf bpfObjects
 	ProgramOptions := ebpf.ProgramOptions{
@@ -495,7 +495,7 @@ func newControlPlaneWithContextOptions(
 	if err = validateRequiredBpfMapsLoaded(bpf); err != nil {
 		return nil, fmt.Errorf("validate bpf maps: %w", err)
 	}
-	log.Infof("Loaded eBPF programs and maps")
+	//log.Infof("Loaded eBPF programs and maps")
 	// outboundId2Name can be modified later.
 	outboundId2Name := make(map[uint8]string)
 	core := newControlPlaneCore(
@@ -631,7 +631,7 @@ func newControlPlaneWithContextOptions(
 		outboundId2Name[uint8(i)] = o.Name
 	}
 	// Apply rules optimizers.
-	log.Infoln("Optimizing and loading routing rules (this may take a while for large rule sets)...")
+	//log.Infoln("Optimizing and loading routing rules (this may take a while for large rule sets)...")
 	routingProgram, err := routing.NewNormalizedProgram(routingA.Rules, routingA.Fallback,
 		&routing.AliasOptimizer{},
 		&routing.DatReaderOptimizer{Logger: log, LocationFinder: locationFinder},
@@ -650,14 +650,14 @@ func newControlPlaneWithContextOptions(
 		log.Debugf("RoutingA:\n%vfallback: %v\n", debugBuilder.String(), routingProgram.Fallback)
 	}
 	// Parse rules and build.
-	log.Infoln("Building routing matcher...")
+	//log.Infoln("Building routing matcher...")
 	builder, err := NewRoutingMatcherBuilderFromProgram(log, routingProgram, outboundName2Id, core.bpf.Load())
 	if err != nil {
 		return nil, fmt.Errorf("NewRoutingMatcherBuilder: %w", err)
 	}
 	kernspaceSnapshot := builder.KernspaceSnapshot()
 	if !buildOpts.delayDatapathCommit {
-		log.Infoln("Loading routing rules into kernel space (BPF)...")
+		//log.Infoln("Loading routing rules into kernel space (BPF)...")
 		var lpmIndices []uint32
 		if lpmIndices, err = kernspaceSnapshot.BuildKernspace(log, core.bpf.Load()); err != nil {
 			return nil, fmt.Errorf("routing kernspace snapshot: %w", err)
@@ -666,7 +666,7 @@ func newControlPlaneWithContextOptions(
 	} else {
 		log.Infoln("Prepared routing matcher; kernel-space routing commit deferred until listener cutover")
 	}
-	log.Infoln("Building userspace routing matcher...")
+	//log.Infoln("Building userspace routing matcher...")
 	routingMatcher, err := builder.BuildUserspace()
 	if err != nil {
 		return nil, fmt.Errorf("RoutingMatcherBuilder.BuildUserspace: %w", err)
@@ -694,8 +694,8 @@ func newControlPlaneWithContextOptions(
 	// Startup/reload is infrequent.
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	log.Infof("Memory usage after routing build: Alloc=%vMiB, Sys=%vMiB, HeapObjects=%v",
-		m.Alloc/1024/1024, m.Sys/1024/1024, m.HeapObjects)
+	/* 	log.Infof("Memory usage after routing build: Alloc=%vMiB, Sys=%vMiB, HeapObjects=%v",
+	m.Alloc/1024/1024, m.Sys/1024/1024, m.HeapObjects) */
 
 	// New control plane.
 	cctx, cancel := context.WithCancel(context.Background())
@@ -1482,7 +1482,7 @@ func (c *ControlPlane) CommitPreparedDatapath() error {
 		return err
 	}
 	if c.routingKernspaceSnapshot != nil {
-		c.log.Infoln("Loading routing rules into kernel space (BPF)...")
+		//c.log.Infoln("Loading routing rules into kernel space (BPF)...")
 		lpmIndices, err := c.routingKernspaceSnapshot.BuildKernspace(c.log, c.core.bpf.Load())
 		if err != nil {
 			return fmt.Errorf("routing kernspace snapshot: %w", err)
@@ -1661,12 +1661,12 @@ func (c *ControlPlane) ChooseDialTarget(outbound consts.OutboundIndex, dst netip
 		} else {
 			dialTarget = net.JoinHostPort(domain, strconv.Itoa(int(dst.Port())))
 		}
-		if c.log.IsLevelEnabled(logrus.DebugLevel) {
+		/*if c.log.IsLevelEnabled(logrus.DebugLevel) {
 			c.log.WithFields(logrus.Fields{
 				"from": dst.String(),
 				"to":   dialTarget,
 			}).Debugln("Rewrite dial target to domain")
-		}
+		}*/
 	}
 	return dialTarget, shouldReroute, dialIp
 }
@@ -2282,9 +2282,9 @@ func (c *ControlPlane) cleanupRedirectTrackMapBeforeLocked(staleBeforeNs uint64)
 	}
 
 	// Only log when there are actual changes
-	if len(keysToDelete) > 0 {
+	/*if len(keysToDelete) > 0 {
 		c.log.Debugf("cleanupRedirectTrackMap: removed %d entries", len(keysToDelete))
-	}
+	}*/
 
 	// Alert if map usage is high
 	const redirectTrackCapacity = 65536
@@ -2362,7 +2362,7 @@ func (c *ControlPlane) cleanupCookiePidMapBeforeLocked(staleBeforeNs uint64) int
 		if _, err := BpfMapBatchDelete(bpf.CookiePidMap, keysToDelete); err != nil {
 			c.log.Debugf("cleanupCookiePidMap: batch delete error: %v", err)
 		}
-		c.log.Debugf("cleanupCookiePidMap: removed %d entries", len(keysToDelete))
+		//c.log.Debugf("cleanupCookiePidMap: removed %d entries", len(keysToDelete))
 	}
 
 	maxEntries := bpf.CookiePidMap.MaxEntries()
@@ -2437,7 +2437,7 @@ func (c *ControlPlane) cleanupRoutingHandoffMapBeforeLocked(staleBeforeNs uint64
 		if _, deleteErr := BpfMapBatchDelete(bpf.RoutingHandoffMap, keysToDelete); deleteErr != nil {
 			c.log.Debugf("cleanupRoutingHandoffMap: batch delete error: %v", deleteErr)
 		}
-		c.log.Debugf("cleanupRoutingHandoffMap: removed %d expired entries", len(keysToDelete))
+		//c.log.Debugf("cleanupRoutingHandoffMap: removed %d expired entries", len(keysToDelete))
 	}
 
 	maxEntries := bpf.RoutingHandoffMap.MaxEntries()
@@ -2589,22 +2589,22 @@ func (c *ControlPlane) cleanupConnStateMapBeforeLocked(aggressiveCleanup bool, s
 	}
 	tcpStats.deleted = len(tcpKeysToDelete)
 
-	if len(udpKeysToDelete) > 0 {
-		if aggressiveCleanup {
-			c.log.Debugf("cleanupConnStateMap: aggressive cleanup removed %d UDP entries (%d%% usage)",
-				len(udpKeysToDelete), udpStats.usagePercent)
-		} else {
-			c.log.Debugf("cleanupConnStateMap: removed %d expired UDP entries", len(udpKeysToDelete))
-		}
-	}
-	if len(tcpKeysToDelete) > 0 {
-		if aggressiveCleanup {
-			c.log.Debugf("cleanupConnStateMap: aggressive cleanup removed %d TCP entries (%d%% usage)",
-				len(tcpKeysToDelete), tcpStats.usagePercent)
-		} else {
-			c.log.Debugf("cleanupConnStateMap: removed %d expired TCP entries", len(tcpKeysToDelete))
-		}
-	}
+	/*if len(udpKeysToDelete) > 0 {
+	  	if aggressiveCleanup {
+	  		c.log.Debugf("cleanupConnStateMap: aggressive cleanup removed %d UDP entries (%d%% usage)",
+	  			len(udpKeysToDelete), udpStats.usagePercent)
+	  	} else {
+	  		c.log.Debugf("cleanupConnStateMap: removed %d expired UDP entries", len(udpKeysToDelete))
+	  	}
+	  }
+	  if len(tcpKeysToDelete) > 0 {
+	  	if aggressiveCleanup {
+	  		c.log.Debugf("cleanupConnStateMap: aggressive cleanup removed %d TCP entries (%d%% usage)",
+	  			len(tcpKeysToDelete), tcpStats.usagePercent)
+	  	} else {
+	  		c.log.Debugf("cleanupConnStateMap: removed %d expired TCP entries", len(tcpKeysToDelete))
+	  	}
+	  }*/
 
 	return udpStats, tcpStats
 }
@@ -3123,7 +3123,7 @@ func (c *ControlPlane) Serve(readyChan chan<- bool, listener *Listener) (err err
 									c.log.WithFields(logrus.Fields{
 										"src":      convergeSrc.String(),
 										"dst":      realDst.String(),
-										"question": dnsMessage.Question,
+										"question": dnsMessage.Question[0].Name + "\t" + dnsmessage.Type(dnsMessage.Question[0].Qtype).String(),
 									}).Debug("DNS ingress fast path got truncated UDP response; returning TC=1 to client")
 								}
 								if sendErr := dnsController.sendDnsTruncatedResponse_(dnsMessage, req, nil); sendErr != nil {
@@ -3140,7 +3140,7 @@ func (c *ControlPlane) Serve(readyChan chan<- bool, listener *Listener) (err err
 								c.log.WithFields(logrus.Fields{
 									"src":      convergeSrc.String(),
 									"dst":      realDst.String(),
-									"question": dnsMessage.Question,
+									"question": dnsMessage.Question[0].Name + "\t" + dnsmessage.Type(dnsMessage.Question[0].Qtype).String(),
 									"error":    e.Error(),
 								}).Warn("DNS ingress fast path failed; sending SERVFAIL response")
 							}
@@ -3155,11 +3155,11 @@ func (c *ControlPlane) Serve(readyChan chan<- bool, listener *Listener) (err err
 							}
 						} else if c.log.IsLevelEnabled(logrus.TraceLevel) {
 							// Success logging for DNS fast path (trace level only)
-							c.log.WithFields(logrus.Fields{
+							/*c.log.WithFields(logrus.Fields{
 								"src":      convergeSrc.String(),
 								"dst":      realDst.String(),
-								"question": dnsMessage.Question,
-							}).Trace("DNS ingress fast path handled successfully")
+								"question": dnsMessage.Question[0].Name + "\t" + dnsmessage.Type(dnsMessage.Question[0].Qtype).String(),
+							}).Trace("DNS ingress fast path handled successfully")*/
 						}
 						return
 					}
@@ -3486,13 +3486,13 @@ func (c *ControlPlane) chooseBestDnsDialer(
 	case consts.IpVersionStr_6:
 		selected.bestTarget = netip.AddrPortFrom(dnsUpstream.Ip6, dnsUpstream.Port)
 	}
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
+	/*if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		fields := logrus.Fields{
 			"ipversions": ipversions,
 			"l4protos":   l4protos,
 			"upstream":   dnsUpstream.String(),
 			"choose":     string(selected.l4proto) + "+" + string(selected.ipversion),
-			"use":        selected.bestTarget.String(),
+			//"use":        selected.bestTarget.String(),
 		}
 		if selected.bestOutbound != nil {
 			fields["outbound"] = selected.bestOutbound.Name
@@ -3504,7 +3504,7 @@ func (c *ControlPlane) chooseBestDnsDialer(
 			fields["penalized_fallback"] = true
 		}
 		c.log.WithFields(fields).Traceln("Choose DNS path")
-	}
+	}*/
 	if snapshotEnabled && !selectedPenalized {
 		c.storeDnsDialerSnapshot(snapshotKey, &selected, now)
 	}
@@ -3648,6 +3648,20 @@ func (c *ControlPlane) releaseRetainedState() {
 	c.routingKernspaceSnapshot = nil
 	c.pendingDnsReloadCache = nil
 	c.core = nil
+}
+
+func (c *ControlPlane) UpdateLogLevel(level string) error {
+	if c == nil || c.log == nil {
+		return fmt.Errorf("control plane or logger not initialized")
+	}
+
+	parsedLevel, err := logrus.ParseLevel(level)
+	if err != nil {
+		return fmt.Errorf("invalid log level: %w", err)
+	}
+
+	c.log.SetLevel(parsedLevel)
+	return nil
 }
 
 func (c *ControlPlane) Close() (err error) {

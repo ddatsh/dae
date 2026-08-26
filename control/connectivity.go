@@ -64,7 +64,7 @@ func (c *controlPlaneCore) outboundAliveChangeCallback(outbound uint8, dryrun bo
 		if !isInit && dryrun {
 			return
 		}
-		if c.log.IsLevelEnabled(logrus.TraceLevel) {
+		/*	if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			strAlive := "NOT ALIVE"
 			if alive {
 				strAlive = "ALIVE"
@@ -72,7 +72,7 @@ func (c *controlPlaneCore) outboundAliveChangeCallback(outbound uint8, dryrun bo
 			c.log.WithFields(logrus.Fields{
 				"outboundId": outbound,
 			}).Tracef("Outbound <%v> %v -> %v, notify the kernel program.", c.outboundId2Name[outbound], networkType.StringWithoutDns(), strAlive)
-		}
+		}*/
 
 		value := uint32(0)
 		if alive {

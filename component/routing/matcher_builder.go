@@ -7,10 +7,11 @@ package routing
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/pkg/config_parser"
 	"github.com/sirupsen/logrus"
-	"strconv"
 )
 
 type DomainSet struct {

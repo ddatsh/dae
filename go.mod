@@ -15,8 +15,9 @@ require (
 	github.com/miekg/dns v1.1.72
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
 	github.com/okzk/sdnotify v0.0.0-20240725214427-1c1fdd37c5ac
-	github.com/olicesx/quic-go v0.0.0-20260226044315-bb65418d151a
+	github.com/olicesx/quic-go v0.0.0-20260821090746-110ca0ac66af
 	github.com/panjf2000/ants/v2 v2.11.5
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/safchain/ethtool v0.7.0
 	github.com/shirou/gopsutil/v4 v4.26.1
 	github.com/sirupsen/logrus v1.9.4
@@ -113,10 +114,10 @@ require (
 )
 
 // Use optimized quic-go with B-tree node pooling + upstream cherry-picks on enhanced-with-fixes baseline.
-replace github.com/olicesx/quic-go => github.com/olicesx/quic-go v0.0.0-20260428161614-e0d255ff807c
+replace github.com/olicesx/quic-go => github.com/olicesx/quic-go v0.0.0-20260821090746-110ca0ac66af
 
 //replace github.com/cilium/ebpf v0.20.0
 //replace github.com/daeuniverse/dae-config-dist/go/dae_config => /home/mzz/antlrProjects/dae-config/build/go/dae_config
 
 // Use the pushed perf/complete-optimizations fork head with QUIC window tuning + upstream cherry-picks.
-replace github.com/daeuniverse/outbound => github.com/olicesx/outbound v0.0.0-sticky-ip.0.20260518034804-52c26f8e759e
+replace github.com/daeuniverse/outbound => github.com/olicesx/outbound v0.0.0-sticky-ip.0.20260821091652-a4521b4298f9

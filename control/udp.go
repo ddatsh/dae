@@ -312,11 +312,11 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 	// - IPv6->IPv4: Convert writeAddr to IPv4-mapped IPv6 for dual-stack socket
 	// - IPv4->IPv6: Convert bindAddr to IPv4-mapped IPv6 to create IPv6 socket
 	bindAddr, writeAddr := normalizeSendPktAddrFamily(from, realTo)
-	traceEnabled := log != nil && log.IsLevelEnabled(logrus.TraceLevel)
+	//traceEnabled := log != nil && log.IsLevelEnabled(logrus.TraceLevel)
 	debugEnabled := log != nil && log.IsLevelEnabled(logrus.DebugLevel)
 	errorEnabled := log != nil && log.IsLevelEnabled(logrus.ErrorLevel)
 
-	if traceEnabled {
+	/*	if traceEnabled {
 		log.WithFields(logrus.Fields{
 			"from":       from.String(),
 			"to":         realTo.String(),
@@ -324,19 +324,19 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 			"write_addr": writeAddr.String(),
 			"data_size":  len(data),
 		}).Trace("sendPkt: preparing to send UDP packet")
-	}
+	}*/
 
 	// Try cached socket first (for Symmetric NAT sessions)
 	if slot != nil {
 		if cached := slot.Load(); cached != nil {
 			if _, err = cached.WriteToUDPAddrPort(data, writeAddr); err == nil {
-				if traceEnabled {
+				/*if traceEnabled {
 					log.WithFields(logrus.Fields{
 						"to":         realTo.String(),
 						"write_addr": writeAddr.String(),
 						"cached":     true,
 					}).Trace("sendPkt: sent via cached socket")
-				}
+				}*/
 				return nil
 			}
 			// Cached socket is stale or broken; clear the cache slot immediately
@@ -353,14 +353,14 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 	if cache != nil {
 		if cached := cache.CachedResponseConn(bindAddr); cached != nil {
 			if _, err = cached.WriteToUDPAddrPort(data, writeAddr); err == nil {
-				if traceEnabled {
+				/*if traceEnabled {
 					log.WithFields(logrus.Fields{
 						"to":         realTo.String(),
 						"write_addr": writeAddr.String(),
 						"cached":     true,
 						"cache_kind": "bind_addr",
 					}).Trace("sendPkt: sent via bind-address cached socket")
-				}
+				}*/
 				return nil
 			}
 			cache.ClearCachedResponseConn(bindAddr, cached)
@@ -373,7 +373,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 		}
 	}
 
-	uConn, isNew, err := DefaultAnyfromPool.GetOrCreate(bindAddr, AnyfromTimeout)
+	uConn, _, err := DefaultAnyfromPool.GetOrCreate(bindAddr, AnyfromTimeout)
 	if err != nil {
 		if tryRawUDPFallback(log, data, from, realTo, debugEnabled, errorEnabled, "get-or-create", err) {
 			return nil
@@ -391,12 +391,12 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 		}
 		return err
 	}
-	if traceEnabled {
+	/*if traceEnabled {
 		log.WithFields(logrus.Fields{
 			"bind_addr":  bindAddr.String(),
 			"new_socket": isNew,
 		}).Trace("sendPkt: got socket from pool")
-	}
+	}*/
 
 	_, err = uConn.WriteToUDPAddrPort(data, writeAddr)
 	if err != nil {
@@ -413,13 +413,13 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 		return err
 	}
 
-	if traceEnabled {
+	/*if traceEnabled {
 		log.WithFields(logrus.Fields{
 			"to":         realTo.String(),
 			"write_addr": writeAddr.String(),
 			"data_size":  len(data),
 		}).Trace("sendPkt: successfully sent packet")
-	}
+	}*/
 
 	// Update caller's cached socket so future calls skip the pool lookup
 	if slot != nil && err == nil {
@@ -652,7 +652,7 @@ func (c *ControlPlane) handlePkt(lConn *net.UDPConn, data []byte, src, realDst n
 			// It is quic ...
 			// Fast path.
 			domain = ue.SniffedDomain
-			dialTarget := realDst.String()
+			dialTarget := ue.dialTargetForWrite(realDst)
 
 			if !c.checkUdpEndpointHealth(ue, ueKey, true) {
 				ue = nil
@@ -662,24 +662,32 @@ func (c *ControlPlane) handlePkt(lConn *net.UDPConn, data []byte, src, realDst n
 				// based on the actual forwarding state (QUIC needs longer timeout)
 				ue.UpdateNatTimeout(QuicNatTimeout)
 
-				if c.log.IsLevelEnabled(logrus.TraceLevel) {
-					fields := logrus.Fields{
-						"network":  "udp(fp)",
-						"outbound": ue.Outbound.Name,
-						"policy":   ue.Outbound.GetSelectionPolicy(),
-						"dialer":   ue.Dialer.Property().Name,
-						"sniffed":  domain,
-						"ip":       RefineAddrPortToShow(realDst),
-						"pid":      routingResult.Pid,
-						"dscp":     routingResult.Dscp,
-						"pname":    ProcessName2String(routingResult.Pname[:]),
-						"mac":      Mac2String(routingResult.Mac[:]),
+				if checkCache(dialTarget) {
+					if c.log.IsLevelEnabled(logrus.TraceLevel) {
+						srcToShow := RefineSourceToShow(realSrc, realDst.Addr())
+
+						fields := logrus.Fields{
+							"network": "udp(fp)",
+							//"outbound": ue.Outbound.Name,
+							//"policy":   ue.Outbound.GetSelectionPolicy(),
+							"dialer": ue.Dialer.Property().Name,
+							//"sniffed":  domain,
+							"ip": RefineAddrPortToShow(realDst),
+							//"pid": routingResult.Pid,
+							//"dscp":  routingResult.Dscp,
+							//"pname": ProcessName2String(routingResult.Pname[:]),
+							//"mac":      Mac2String(routingResult.Mac[:]),
+						}
+						if srcToShow[0] == '[' {
+							c.log.WithFields(fields).Tracef(" \b%v <-> %v", srcToShow, dialTarget)
+						} else {
+							c.log.WithFields(fields).Tracef("%v <-> %v", srcToShow, dialTarget)
+						}
 					}
-					c.log.WithFields(fields).Tracef("%v <-> %v", RefineSourceToShow(realSrc, realDst.Addr()), dialTarget)
 				}
 
 				ue.TrackUdpConnStateTuplePair(realSrc, realDst)
-				_, err = ue.WriteTo(data, dialTarget)
+				_, err = ue.WriteTo(data, ue.dialTargetForWrite(realDst))
 				if err == nil {
 					c.recordUploadTraffic(int64(len(data)))
 					if lifecycle, ok := newUdpSessionLifecycleContext(ue, ""); ok {
@@ -888,7 +896,7 @@ afterSniffing:
 		UdpHealthDomain: dialer.UdpHealthDomainData,
 	}
 	// Keep UDP target pinned to original destination IP to avoid QUIC session issues.
-	dialTarget := realDst.String()
+	dialTarget := ue.dialTargetForWrite(realDst)
 getNew:
 	if retry > MaxRetry {
 		c.log.WithFields(logrus.Fields{
@@ -1068,23 +1076,33 @@ getNew:
 	// Only print routing for new connection to avoid the log exploded (Quic and BT).
 	if (isNew && c.log.IsLevelEnabled(logrus.InfoLevel)) || c.log.IsLevelEnabled(logrus.DebugLevel) {
 		entry := c.log.WithFields(logrus.Fields{
-			"network":  networkType.StringWithoutDns(),
-			"outbound": ue.Outbound.Name,
-			"policy":   ue.Outbound.GetSelectionPolicy(),
-			"dialer":   ue.Dialer.Property().Name,
-			"sniffed":  domain,
-			"ip":       RefineAddrPortToShow(realDst),
-			"pid":      routingResult.Pid,
-			"dscp":     routingResult.Dscp,
-			"pname":    ProcessName2String(routingResult.Pname[:]),
-			"mac":      Mac2String(routingResult.Mac[:]),
+			//"network": networkType.StringWithoutDns(),
+			//"outbound": ue.Outbound.Name,
+			//"policy":   ue.Outbound.GetSelectionPolicy(),
+			"dialer": ue.Dialer.Property().Name,
+			//"sniffed":  domain,
+			//"ip": RefineAddrPortToShow(realDst),
+			//"pid":      routingResult.Pid,
+			//"dscp":     routingResult.Dscp,
+			//"pname":    ProcessName2String(routingResult.Pname[:]),
+			//"mac":      Mac2String(routingResult.Mac[:]),
 		})
 		// Build entry once; select level without a second WithFields allocation.
 		logger := entry.Infof
 		if !isNew && c.log.IsLevelEnabled(logrus.DebugLevel) {
 			logger = entry.Debugf
 		}
-		logger("%v <-> %v", RefineSourceToShow(realSrc, realDst.Addr()), dialTarget)
+		srcToShow := RefineSourceToShow(realSrc, realDst.Addr())
+		if srcToShow[0] == '[' {
+			if checkCache(dialTarget) {
+				logger("\b%s <-> %s", srcToShow, dialTarget)
+			}
+		} else {
+			if checkCache(dialTarget) {
+				logger("%s <-> %s", srcToShow, dialTarget)
+			}
+		}
+
 	}
 
 	return nil

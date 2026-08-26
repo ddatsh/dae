@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -48,6 +49,23 @@ func NewAhocorasickSlimtrie(log *logrus.Logger, bitLength int) *AhocorasickSlimt
 func (n *AhocorasickSlimtrie) AddSet(bitIndex int, patterns []string, typ consts.RoutingDomainKey) {
 	if n.err != nil {
 		return
+	}
+	// Pre-grow slices to avoid repeated growslice when appending many patterns.
+	maxTrieEntries := 0
+	maxAcEntries := 0
+	switch typ {
+	case consts.RoutingDomainKey_Full:
+		maxTrieEntries = len(patterns)
+	case consts.RoutingDomainKey_Suffix:
+		maxTrieEntries = len(patterns) * 2
+	case consts.RoutingDomainKey_Keyword:
+		maxAcEntries = len(patterns)
+	}
+	if maxTrieEntries > 0 {
+		n.toBuildTrie[bitIndex] = slices.Grow(n.toBuildTrie[bitIndex], maxTrieEntries)
+	}
+	if maxAcEntries > 0 {
+		n.toBuildAc[bitIndex] = slices.Grow(n.toBuildAc[bitIndex], maxAcEntries)
 	}
 nextPattern:
 	for _, d := range patterns {
@@ -262,5 +280,9 @@ func (n *AhocorasickSlimtrie) Build() (err error) {
 	// Release unused data.
 	n.toBuildAc = nil
 	n.toBuildTrie = nil
+
+	// Reclaim temporary build allocations (BFS queues, transformed string
+	// slices) immediately so peak memory does not linger into steady state.
+	runtime.GC()
 	return nil
 }

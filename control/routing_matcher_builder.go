@@ -615,12 +615,12 @@ func buildRoutingKernspace(
 	}
 
 	lpmCount := uint32(len(simulatedLpmTries))
-	if lpmCount > 0 {
+	/*if lpmCount > 0 {
 		dedupCountU32 := uint32(dedupCount)
 		reduction := float64(lpmCount-dedupCountU32) / float64(lpmCount) * 100
 		log.Infof("Building %d LPM tries (deduplicated from %d sets, %.1f%% reduction)",
 			dedupCountU32, lpmCount, reduction)
-	}
+	}*/
 	allocStartIdx, err := reserveLpmRingSlots(lpmCount)
 	if err != nil {
 		return nil, err
@@ -709,9 +709,7 @@ func buildRoutingKernspace(
 					return
 				}
 
-				mu.Lock()
 				mapErr = bpf.LpmArrayMap.Update(r.lpmIndex, m, ebpf.UpdateAny)
-				mu.Unlock()
 				if mapErr != nil {
 					_ = m.Close()
 					mu.Lock()
@@ -763,7 +761,7 @@ func buildRoutingKernspace(
 	if err = bpf.RoutingMetaMap.Update(uint32(0), routingsLen, ebpf.UpdateAny); err != nil {
 		return nil, fmt.Errorf("update routing_meta_map: %w", err)
 	}
-	log.Infof("Routing match set len: %v/%v", len(rules), consts.MaxMatchSetLen)
+	//log.Infof("Routing match set len: %v/%v", len(rules), consts.MaxMatchSetLen)
 
 	// Collect all unique indices that were actually updated in the shared map.
 	// Since lpmCount includes duplicates, we use results to get the mapped ring indices.

@@ -81,8 +81,8 @@ func createNetkitDeviceViaNetlink(log *logrus.Logger, cfg *NetkitConfig) error {
 		return fmt.Errorf("netlink.LinkAdd failed: %w", err)
 	}
 
-	log.Infof("Successfully created Netkit device pair %s <-> %s via netlink API (scrub=%v)",
-		cfg.Name, cfg.PeerName, !cfg.ScrubNone)
+/*	log.Infof("Successfully created Netkit device pair %s <-> %s via netlink API (scrub=%v)",
+		cfg.Name, cfg.PeerName, !cfg.ScrubNone)*/
 	return nil
 }
 

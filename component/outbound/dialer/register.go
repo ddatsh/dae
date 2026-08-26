@@ -69,14 +69,14 @@ func NewFromLinkWithProxyCacheContext(ctx context.Context, gOption *GlobalOption
 	}
 
 	// Debug: log proxy address type
-	if gOption.Log != nil && gOption.Log.IsLevelEnabled(logrus.DebugLevel) {
+	/*	if gOption.Log != nil && gOption.Log.IsLevelEnabled(logrus.DebugLevel) {
 		needsCache := p.Address != "" && needsStickyIpCaching(p.Address)
 		gOption.Log.WithFields(logrus.Fields{
 			"proxy_address": p.Address,
 			"needs_cache":   needsCache,
 			"subscription":  subscriptionTag,
 		}).Debug("[DialerRegister] Checking if sticky IP caching is needed")
-	}
+	}*/
 
 	// If the proxy address is a domain (not an IP), wrap with sticky IP dialer
 	// This caches the proxy server's resolved IP to ensure stable connections
@@ -100,9 +100,9 @@ func NewFromLinkWithProxyCacheContext(ctx context.Context, gOption *GlobalOption
 		}
 	} else if p.Address != "" {
 		// Proxy is an IP address, no caching needed
-		if gOption.Log != nil && gOption.Log.IsLevelEnabled(logrus.DebugLevel) {
+		/*if gOption.Log != nil && gOption.Log.IsLevelEnabled(logrus.DebugLevel) {
 			gOption.Log.WithField("proxy_address", p.Address).Debug("[DialerRegister] Proxy is IP address - no sticky IP caching needed")
-		}
+		}*/
 	}
 
 	daeDialer := NewDialerContext(ctx, d, gOption, iOption, &p)

@@ -175,12 +175,12 @@ func (ns *DaeNetns) supportsNetkit() bool {
 func (ns *DaeNetns) setupVethOrNetkit() (err error) {
 	// Try Netkit first if kernel supports it
 	if ns.supportsNetkit() {
-		ns.log.Infof("Kernel %s supports Netkit, attempting to create Netkit device pair",
-			ns.kernelVersion.String())
+		/*ns.log.Infof("Kernel %s supports Netkit, attempting to create Netkit device pair",
+			ns.kernelVersion.String())*/
 		err := ns.tryCreateNetkit()
 		if err == nil {
 			ns.useNetkit = true
-			ns.log.Infof("Successfully created Netkit device pair (performance mode)")
+			//ns.log.Infof("Successfully created Netkit device pair (performance mode)")
 			return nil
 		}
 		// Netkit failed, fall back to veth

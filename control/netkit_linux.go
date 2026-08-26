@@ -144,7 +144,7 @@ func createNetkitDevice(log *logrus.Logger, name, peerName string, txQLen int, e
 	// This works even with older iproute2 versions
 	log.Debug("Trying netlink API method")
 	if err := createNetkitDeviceViaNetlink(log, cfg); err == nil {
-		log.Infof("Successfully created Netkit device pair %s <-> %s using netlink API", name, peerName)
+		//log.Infof("Successfully created Netkit device pair %s <-> %s using netlink API", name, peerName)
 		return nil
 	} else {
 		log.Debugf("Netlink API method failed: %v", err)
@@ -171,7 +171,7 @@ func createNetkitDevice(log *logrus.Logger, name, peerName string, txQLen int, e
 		return fmt.Errorf("failed to create Netkit device via ip command: %w", err)
 	}
 
-	log.Infof("Successfully created Netkit device pair %s <-> %s using ip command", name, peerName)
+	//log.Infof("Successfully created Netkit device pair %s <-> %s using ip command", name, peerName)
 	return nil
 }
 

@@ -511,7 +511,7 @@ retryLoadBpf:
 				kernelVersion, consts.RedirectPeerSafeVersion)
 		default:
 			useRedirectPeer = 1
-			log.Infof("Safely enabled bpf_redirect_peer() (kernel %v, netkit+scrub=NONE)", kernelVersion)
+			//log.Infof("Safely enabled bpf_redirect_peer() (kernel %v, netkit+scrub=NONE)", kernelVersion)
 		}
 	}
 

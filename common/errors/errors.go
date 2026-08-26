@@ -162,6 +162,12 @@ func IsIgnorableConnectionError(err error) bool {
 		return true
 	}
 
+	// QUIC stream cancellation with error code 0 is a normal close.
+	var streamErr *quic.StreamError
+	if errors.As(err, &streamErr) && streamErr.ErrorCode == 0 {
+		return true
+	}
+
 	// Check for timeout (type assertion fast path first)
 	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 		return true
@@ -224,15 +230,6 @@ func IsIgnorableTCPRelayError(err error) bool {
 		return true
 	}
 
-	// Check for QUIC stream cancellation with error code 0
-	// Fast path: check prefix before errors.As
-	if HasPrefix(errStr, "stream") && Contains(errStr, "canceled by") {
-		var streamErr *quic.StreamError
-		if errors.As(err, &streamErr) && streamErr.ErrorCode == 0 {
-			return true
-		}
-	}
-
 	// Check common patterns (single string allocation reused)
 	return ContainsIgnorableErrorPattern(errStr)
 }
@@ -262,6 +259,14 @@ func IsUDPEndpointNormalClose(err error) bool {
 		return true
 	}
 
+	// QUIC stream cancellation with error code 0 is a normal close.
+	// Match the typed error, not the Error() string: a format change in
+	// quic-go must not silently reclassify this as a real failure.
+	var streamErr *quic.StreamError
+	if errors.As(err, &streamErr) && streamErr.ErrorCode == 0 {
+		return true
+	}
+
 	// Slow path: single string allocation for all string-based checks.
 	// This handles wrapped errors that don't match sentinel errors.
 	errStr := err.Error()
@@ -278,18 +283,6 @@ func IsUDPEndpointNormalClose(err error) bool {
 	// Check for replay attack error
 	if Contains(errStr, "replay attack") {
 		return true
-	}
-
-	// QUIC stream cancellation with error code 0 is a normal closure.
-	// Fast path: check string prefix before expensive errors.As.
-	// QUIC stream errors have format: "stream <id> canceled by <local|remote> with error code <code>"
-	// Note: This string-format check is an optimization; if the QUIC library changes its format,
-	// the errors.As fallback still provides correct detection.
-	if HasPrefix(errStr, "stream") && Contains(errStr, "canceled by") {
-		var streamErr *quic.StreamError
-		if errors.As(err, &streamErr) && streamErr.ErrorCode == 0 {
-			return true
-		}
 	}
 
 	return false

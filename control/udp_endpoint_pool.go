@@ -371,17 +371,23 @@ func (ue *UdpEndpoint) TrackUdpConnStateTuplePair(src, dst netip.AddrPort) {
 	if ue.udpConnStateTuples == nil {
 		ue.udpConnStateTuples = make(map[bpfTuplesKey]struct{}, 4)
 	}
-	newKeys := make([]bpfTuplesKey, 0, 2)
+	// Use a stack array to avoid make([]bpfTuplesKey, 0, 2) allocation on
+	// every packet. RetainUdpConnStateTuples copies keys by value, so the
+	// backing array does not need to outlive this call.
+	var newKeys [2]bpfTuplesKey
+	newKeyCount := 0
 	if _, ok := ue.udpConnStateTuples[forward]; !ok {
 		ue.udpConnStateTuples[forward] = struct{}{}
-		newKeys = append(newKeys, forward)
+		newKeys[newKeyCount] = forward
+		newKeyCount++
 	}
 	if _, ok := ue.udpConnStateTuples[reverse]; !ok {
 		ue.udpConnStateTuples[reverse] = struct{}{}
-		newKeys = append(newKeys, reverse)
+		newKeys[newKeyCount] = reverse
+		newKeyCount++
 	}
-	if len(newKeys) > 0 {
-		ue.udpConnStateOwner.RetainUdpConnStateTuples(newKeys)
+	if newKeyCount > 0 {
+		ue.udpConnStateOwner.RetainUdpConnStateTuples(newKeys[:newKeyCount])
 	}
 }
 
@@ -532,7 +538,7 @@ func (ue *UdpEndpoint) logEndpointExit(err error, msg string) {
 	}
 	entry := ue.log.WithFields(fields).WithError(err)
 	if err == nil || errors.IsUDPEndpointNormalClose(err) {
-		entry.Debugln("UdpEndpoint " + msg + " closed normally")
+		//entry.Debugln("UdpEndpoint " + msg + " closed normally")
 	} else {
 		if opErr, ok := err.(*net.OpError); ok {
 			fields["op"] = opErr.Op
@@ -588,13 +594,13 @@ func releaseUdpEndpointReplies(replies []udpEndpointReply) {
 }
 
 func (ue *UdpEndpoint) start() {
-	if ue.log != nil && ue.log.IsLevelEnabled(logrus.DebugLevel) {
+	/*if ue.log != nil && ue.log.IsLevelEnabled(logrus.DebugLevel) {
 		ue.log.WithFields(logrus.Fields{
 			"lAddr":      ue.lAddr.String(),
 			"dialer":     ue.Dialer.Property().Name,
 			"proxy_addr": ue.DialTarget,
 		}).Debug("[UdpEndpoint] Read loop started")
-	}
+	}*/
 
 	// Async reply dispatch: the read loop pushes replies into this channel
 	// and a dedicated sender goroutine drains it. This prevents slow sendPkt
@@ -812,6 +818,18 @@ func (ue *UdpEndpoint) retire() {
 	ue.expiresAtNano.Store(1)
 	ue.selfRemoveFromPool()
 	_ = ue.Close()
+}
+
+// dialTargetForWrite returns the string form of the datagram's upstream
+// destination for WriteTo. Symmetric endpoints (non-zero Dst in the pool
+// key) have a fixed dial target stored once at creation, so the per-packet
+// netip.AddrPort.String() allocation is skipped; FullCone endpoints
+// (zero Dst) serve multiple destinations and must format per call.
+func (ue *UdpEndpoint) dialTargetForWrite(realDst netip.AddrPort) string {
+	if ue != nil && ue.poolKey.Dst.IsValid() {
+		return ue.DialTarget
+	}
+	return realDst.String()
 }
 
 func (ue *UdpEndpoint) WriteTo(b []byte, addr string) (int, error) {

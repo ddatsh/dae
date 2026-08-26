@@ -132,10 +132,10 @@ func (c *ControlPlane) chooseProxyDialer(ctx context.Context, p *proxyDialParam)
 		mark = newMark
 		// Reset dialTarget.
 		dialTarget, _, dialIp = c.ChooseDialTarget(outboundIndex, dst, domain)
-		c.log.Tracef("outbound rerouted: %v => %v",
+		/*c.log.Tracef("outbound rerouted: %v => %v",
 			consts.OutboundControlPlaneRouting.String(),
 			outboundIndex.String(),
-		)
+		)*/
 	}
 
 	if mark == 0 {
