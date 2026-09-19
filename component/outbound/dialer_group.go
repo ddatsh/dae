@@ -619,9 +619,9 @@ func uniqueAliveDialerSets(aliveDialerSets [8]*dialer.AliveDialerSet) []*dialer.
 	return sets
 }
 
-func standardSelectionNetworkTypes() [6]*dialer.NetworkType {
+func standardSelectionNetworkTypes() []*dialer.NetworkType {
 	keys := dialer.StandardHealthKeys()
-	var networkTypes [6]*dialer.NetworkType
+	networkTypes := make([]*dialer.NetworkType, len(keys))
 	for i, key := range keys {
 		networkTypes[i] = key.NetworkType()
 	}

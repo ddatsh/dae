@@ -414,22 +414,22 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 		// If best dialer changed.
 		if a.minLatency.dialer != bakOldBestDialer {
 			if currentAlive {
-				newBestDialer := a.minLatency.dialer
-				newBestLatency := a.dialerToLatency[newBestDialer]
-				newBestOffset := a.dialerToLatencyOffset[newBestDialer]
-				re := "re-"
-				var oldDialerName string
+				//newBestDialer := a.minLatency.dialer
+				//newBestLatency := a.dialerToLatency[newBestDialer]
+				//newBestOffset := a.dialerToLatencyOffset[newBestDialer]
+				//re := "re-"
+				//var oldDialerName string
 				if bakOldBestDialer == nil {
 					// Not alive -> alive
 					a.mu.Unlock()
 					a.aliveChangeCallback(true)
 					a.mu.Lock()
-					re = ""
-					oldDialerName = "<nil>"
+					//re = ""
+					//oldDialerName = "<nil>"
 				} else {
-					oldDialerName = bakOldBestDialer.property.Name
+					//oldDialerName = bakOldBestDialer.property.Name
 				}
-				if a.log.IsLevelEnabled(logrus.InfoLevel) {
+				/*if a.log.IsLevelEnabled(logrus.InfoLevel) {
 					// One line carries the decision: which dialer won, what
 					// it displaced, the selection key, and why the change
 					// happened. The full latency table moves to debug (see
@@ -454,18 +454,18 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 					}
 					a.log.WithFields(fields).Infof("Group %vselects dialer", re)
 				}
-
+*/
 				// Lock order / critical-section discipline: the snapshot is
 				// taken under a.mu and the formatting + log write happen
 				// after unlocking, mirroring the aliveChangeCallback calls
 				// below. Holding a.mu across the render would serialize every
 				// other latency update behind a full-list sort and a log
 				// write (the caller may hold the group's publish lock too).
-				if snap, ok := a.snapshotLatenciesLocked(); ok {
+				/*if snap, ok := a.snapshotLatenciesLocked(); ok {
 					a.mu.Unlock()
 					a.printLatenciesOutOfLock(snap)
 					a.mu.Lock()
-				}
+				}*/
 			} else {
 				// Alive -> not alive
 				a.mu.Unlock()

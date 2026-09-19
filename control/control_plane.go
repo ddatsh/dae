@@ -1749,9 +1749,9 @@ func (c *ControlPlane) cleanupRedirectTrackMapBeforeLocked(staleBeforeNs uint64)
 	}
 
 	// Only log when there are actual changes
-	if len(keysToDelete) > 0 {
+	/*if len(keysToDelete) > 0 {
 		c.log.Debugf("cleanupRedirectTrackMap: removed %d entries", len(keysToDelete))
-	}
+	}*/
 
 	// Alert if map usage is high. The capacity is read from the loaded map
 	// instead of a second hard-coded copy of MAX_REDIRECT_TRACK_NUM: the map
@@ -1832,7 +1832,7 @@ func (c *ControlPlane) cleanupCookiePidMapBeforeLocked(staleBeforeNs uint64) int
 		if _, err := BpfMapBatchDelete(bpf.CookiePidMap, keysToDelete); err != nil {
 			c.log.Debugf("cleanupCookiePidMap: batch delete error: %v", err)
 		}
-		c.log.Debugf("cleanupCookiePidMap: removed %d entries", len(keysToDelete))
+		//c.log.Debugf("cleanupCookiePidMap: removed %d entries", len(keysToDelete))
 	}
 
 	maxEntries := bpf.CookiePidMap.MaxEntries()
@@ -1908,7 +1908,7 @@ func (c *ControlPlane) cleanupRoutingHandoffMapBeforeLocked(staleBeforeNs uint64
 		if _, deleteErr := BpfMapBatchDelete(bpf.RoutingHandoffMap, keysToDelete); deleteErr != nil {
 			c.log.Debugf("cleanupRoutingHandoffMap: batch delete error: %v", deleteErr)
 		}
-		c.log.Debugf("cleanupRoutingHandoffMap: removed %d expired entries", len(keysToDelete))
+		//c.log.Debugf("cleanupRoutingHandoffMap: removed %d expired entries", len(keysToDelete))
 	}
 
 	maxEntries := bpf.RoutingHandoffMap.MaxEntries()
@@ -2919,7 +2919,7 @@ func (c *ControlPlane) chooseBestDnsDialerSnapshot(
 	case consts.IpVersionStr_6:
 		selected.bestTarget = netip.AddrPortFrom(dnsUpstream.Ip6, dnsUpstream.Port)
 	}
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
+	/*if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		fields := logrus.Fields{
 			"ipversions": ipversions,
 			"l4protos":   l4protos,
@@ -2937,7 +2937,7 @@ func (c *ControlPlane) chooseBestDnsDialerSnapshot(
 			fields["penalized_fallback"] = true
 		}
 		c.log.WithFields(fields).Traceln("Choose DNS path")
-	}
+	}*/
 	if snapshotEnabled && !selectedPenalized {
 		c.storeDnsDialerSnapshot(snapshotKey, &selected, now)
 	}

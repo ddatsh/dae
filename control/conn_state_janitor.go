@@ -500,7 +500,7 @@ func (c *ControlPlane) cleanupConnStateMapBeforeLocked(aggressiveCleanup bool, s
 			c.log.Debugf("cleanupConnStateMap: aggressive cleanup removed %d UDP entries (%d%% usage)",
 				len(udpKeysToDelete), udpStats.usagePercent)
 		} else {
-			c.log.Debugf("cleanupConnStateMap: removed %d expired UDP entries", len(udpKeysToDelete))
+			//c.log.Debugf("cleanupConnStateMap: removed %d expired UDP entries", len(udpKeysToDelete))
 		}
 	}
 	if len(tcpKeysToDelete) > 0 {
@@ -508,7 +508,7 @@ func (c *ControlPlane) cleanupConnStateMapBeforeLocked(aggressiveCleanup bool, s
 			c.log.Debugf("cleanupConnStateMap: aggressive cleanup removed %d TCP entries (%d%% usage)",
 				len(tcpKeysToDelete), tcpStats.usagePercent)
 		} else {
-			c.log.Debugf("cleanupConnStateMap: removed %d expired TCP entries", len(tcpKeysToDelete))
+			//c.log.Debugf("cleanupConnStateMap: removed %d expired TCP entries", len(tcpKeysToDelete))
 		}
 	}
 

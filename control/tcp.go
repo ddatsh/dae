@@ -23,6 +23,7 @@ import (
 	daerrors "github.com/daeuniverse/dae/common/errors"
 	ob "github.com/daeuniverse/dae/component/outbound"
 	"github.com/daeuniverse/dae/component/sniffing"
+	"github.com/daeuniverse/dae/pkg/cache"
 	"github.com/daeuniverse/outbound/netproxy"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
@@ -45,7 +46,7 @@ func logOffloadSkipRateLimited(l *logrus.Logger, reason string) {
 		return
 	}
 	offloadSkipLogAt[reason] = now
-	l.Debugf("Skip TCP relay eBPF offload: %s", reason)
+	//l.Debugf("Skip TCP relay eBPF offload: %s", reason)
 }
 
 const (
@@ -317,8 +318,16 @@ func (c *ControlPlane) handleConnWithRoutingResultOwned(
 
 	// Per-flow routing traces are Debug: at Info they dominate CPU/allocs
 	// under high connection rates. Raise log_level to debug to restore them.
-	if c.log.IsLevelEnabled(logrus.DebugLevel) {
-		c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Debugf("%v <-> %v", RefineSourceToShow(src, dst.Addr()), res.DialTarget)
+	dialTarget:=res.DialTarget
+	if cache.NotExists("tcp"+dialTarget){
+		if c.log.IsLevelEnabled(logrus.DebugLevel) {
+			rst := RefineSourceToShow(src, dst.Addr())
+			if rst[0] == '[' {
+				c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Debugf(" \b%v <-> %v", rst, res.DialTarget)
+			}else{
+				c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Debugf("%v <-> %v", rst, res.DialTarget)
+			}
+		}
 	}
 
 	if offloaded {
@@ -352,12 +361,12 @@ func relayEstablishedTCPFlow(
 		return fmt.Errorf("handleTCP relay error: %w", err)
 	}
 
-	if log != nil && log.IsLevelEnabled(logrus.DebugLevel) {
+	/*	if log != nil && log.IsLevelEnabled(logrus.DebugLevel) {
 		log.WithFields(logrus.Fields{
 			"src": src.String(),
 			"dst": dst.String(),
 		}).Debug("TCP relay completed")
-	}
+	}*/
 
 	return nil
 }

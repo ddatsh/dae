@@ -702,7 +702,7 @@ func (d *Dialer) aliveBackground() {
 			return d.HttpCheck(ctx, IdxTcp4, opt.Url, opt.Ip4, opt.Method, tcpSomark, mptcp)
 		},
 	}
-	tcp6CheckOpt := &CheckOption{
+	/*	tcp6CheckOpt := &CheckOption{
 		networkType: &NetworkType{
 			L4Proto:   consts.L4ProtoStr_TCP,
 			IpVersion: consts.IpVersionStr_6,
@@ -723,8 +723,8 @@ func (d *Dialer) aliveBackground() {
 			}
 			return d.HttpCheck(ctx, IdxTcp6, opt.Url, opt.Ip6, opt.Method, tcpSomark, mptcp)
 		},
-	}
-	udpNetwork := netproxy.MagicNetwork{
+	}*/
+	/*udpNetwork := netproxy.MagicNetwork{
 		Network: "udp",
 		Mark:    d.CheckDnsOptionRaw.Somark,
 	}.Encode()
@@ -762,7 +762,7 @@ func (d *Dialer) aliveBackground() {
 		},
 		CheckFunc: makeDnsCheckFunc(func(o *CheckDnsOption) netip.Addr { return o.Ip4 }, &udpNetwork),
 	}
-	udp6CheckDnsOpt := &CheckOption{
+		udp6CheckDnsOpt := &CheckOption{
 		networkType: &NetworkType{
 			L4Proto:         consts.L4ProtoStr_UDP,
 			IpVersion:       consts.IpVersionStr_6,
@@ -770,8 +770,8 @@ func (d *Dialer) aliveBackground() {
 			UdpHealthDomain: UdpHealthDomainDns,
 		},
 		CheckFunc: makeDnsCheckFunc(func(o *CheckDnsOption) netip.Addr { return o.Ip6 }, &udpNetwork),
-	}
-	var CheckOpts = []*CheckOption{tcp4CheckOpt, tcp6CheckOpt, udp4CheckDnsOpt, udp6CheckDnsOpt}
+	}*/
+	var CheckOpts = []*CheckOption{tcp4CheckOpt}
 
 	var unusedOnce bool
 	checkUnused := func() bool {
@@ -898,7 +898,7 @@ func (d *Dialer) aliveBackground() {
 			// WITHOUT any successes in this cycle. This allows partially-working dual-stack
 			// nodes (e.g. V4 OK, V6 broken) to eventually wash white their penalty.
 			d.NotifyPeriodicCheckResult(consts.L4ProtoStr_TCP, cycleRes.tcpSuccess, cycleRes.tcpFailure && !cycleRes.tcpSuccess)
-			d.NotifyPeriodicCheckResultForType(udp4CheckDnsOpt.networkType, cycleRes.udpSuccess, cycleRes.udpFailure && !cycleRes.udpSuccess)
+			//d.NotifyPeriodicCheckResultForType(udp4CheckDnsOpt.networkType, cycleRes.udpSuccess, cycleRes.udpFailure && !cycleRes.udpSuccess)
 		}
 
 		// Targeted checks don't disturb the periodic timer — only full checks do.
@@ -1412,7 +1412,7 @@ func (d *Dialer) check(opts *CheckOption, isResuscitation bool, cycle *cycleResu
 		if isResuscitation {
 			d.Log.WithFields(fields).Infof("%s resuscitated by emergency probe", strings.ToUpper(string(opts.networkType.L4Proto)))
 		} else {
-			d.Log.WithFields(fields).Debugln("Connectivity Check")
+			//d.Log.WithFields(fields).Debugln("Connectivity Check")
 		}
 		d.informDialerGroupUpdate(update)
 	case err != nil && !d.isLifecycleTeardownError(err) && !stderrors.Is(err, errCheckOptionUnavailable):

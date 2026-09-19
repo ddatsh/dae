@@ -181,7 +181,7 @@ func (c *ControlPlane) reportDatapathOverflowInterval(now time.Time, snap bpfSta
 
 	state := &c.datapathOverflowReport
 	fields := state.datapathOverflowFields(snap, udpOverflow, tcpOverflow)
-	level, moved := classifyDatapathOverflowInterval(fields)
+	_, moved := classifyDatapathOverflowInterval(fields)
 
 	if !state.primed.Swap(true) {
 		// First observation: the baselines are unknown, and the counters may
@@ -214,5 +214,5 @@ func (c *ControlPlane) reportDatapathOverflowInterval(now time.Time, snap bpfSta
 	if connStateCapacity > 0 {
 		logFields["conn_state_map_capacity"] = connStateCapacity
 	}
-	c.log.WithFields(logFields).Log(level, datapathOverflowMessage(level))
+	//c.log.WithFields(logFields).Log(level, datapathOverflowMessage(level))
 }

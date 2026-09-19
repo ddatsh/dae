@@ -270,11 +270,12 @@ func (c *DnsController) sendDnsErrorResponse_(
 	dnsMessage.RecursionAvailable = true
 	dnsMessage.Truncated = truncated
 	dnsMessage.Compress = true
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
+	/*if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
+			//"question": dnsMessage.Question,
+			"question": dnsMessage.Question[0].Name + "\t" + QtypeToString(dnsMessage.Question[0].Qtype),
 		}).Traceln(traceMsg)
-	}
+	}*/
 	if responseWriter != nil {
 		return responseWriter.WriteMsg(dnsMessage)
 	}

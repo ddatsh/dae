@@ -132,8 +132,8 @@ func HealthKeyFromCollectionIndex(idx int) (HealthKey, bool) {
 	}
 }
 
-func StandardHealthKeys() [6]HealthKey {
-	return [6]HealthKey{
+func StandardHealthKeys() []HealthKey {
+	return []HealthKey{
 		{Domain: HealthDomainDnsUDP, IpVersion: consts.IpVersionStr_4},
 		{Domain: HealthDomainDnsUDP, IpVersion: consts.IpVersionStr_6},
 		{Domain: HealthDomainTCP, IpVersion: consts.IpVersionStr_4},

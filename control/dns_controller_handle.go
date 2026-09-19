@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strings"
 	"time"
 
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/common/netutils"
 	"github.com/daeuniverse/dae/component/dns"
 	"github.com/daeuniverse/dae/component/outbound/dialer"
+	"github.com/daeuniverse/dae/pkg/cache"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -57,11 +57,11 @@ func (c *DnsController) forwardWithFallback(
 	upstream *dns.Upstream,
 	primaryDialArg *dialArgument,
 	data []byte,
-	// isAsIs marks the transparent destination synthesized by
-	// resolveDNSUpstream, which has no configured scheme of its own. It is
-	// passed explicitly instead of being inferred from the "udp" scheme that
-	// synthesis happens to write, so the two cases can never be confused when
-	// the synthesized scheme changes.
+// isAsIs marks the transparent destination synthesized by
+// resolveDNSUpstream, which has no configured scheme of its own. It is
+// passed explicitly instead of being inferred from the "udp" scheme that
+// synthesis happens to write, so the two cases can never be confused when
+// the synthesized scheme changes.
 	isAsIs bool,
 ) (respMsg *dnsmessage.Msg, usedDialArg *dialArgument, err error) {
 	// Per-attempt timeout: each attempt gets the full DefaultDialTimeout budget.
@@ -304,6 +304,10 @@ func (c *DnsController) HandleWithResponseWriter_(ctx context.Context, dnsMessag
 		baseCacheKey = c.cacheKey(qname, qtype)
 	}
 
+	if dnsMessage.Truncated == true {
+		dnsMessage.Truncated = false
+	}
+
 	// Route request first, then check cache.
 	// This ensures Reject rules are always applied, even if cache exists.
 	// Cache lookup overhead (~1µs) is negligible compared to network latency (~ms).
@@ -489,7 +493,7 @@ func (c *DnsController) serveFromRespCacheWithRefresh_(dnsMessage *dnsmessage.Ms
 	if err := c.writeCachedResponse(resp, dnsMessage.Id, req, responseWriter, dnsMessage); err != nil {
 		return true, err
 	}
-	if c.log.IsLevelEnabled(logrus.DebugLevel) && len(dnsMessage.Question) > 0 {
+	/*if c.log.IsLevelEnabled(logrus.DebugLevel) && len(dnsMessage.Question) > 0 {
 		q := dnsMessage.Question[0]
 		l := c.log.WithFields(logrus.Fields{
 			"_qname": strings.ToLower(q.Name),
@@ -503,7 +507,7 @@ func (c *DnsController) serveFromRespCacheWithRefresh_(dnsMessage *dnsmessage.Ms
 			})
 		}
 		l.Debug("cache hit")
-	}
+	}*/
 	return true, nil
 }
 
@@ -560,9 +564,15 @@ func (c *DnsController) handleWithResponseWriter_(
 			upstreamName = upstream.String()
 		}
 		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
+			//"question": dnsMessage.Question,
+			"question": dnsMessage.Question[0].Name + "(" + QtypeToString(dnsMessage.Question[0].Qtype) + ")",
 			"upstream": upstreamName,
 		}).Traceln("Request to DNS upstream")
+	}
+
+	if dnsMessage.Truncated {
+		dnsMessage.Truncated = false
+		dnsMessage.AuthenticatedData = true
 	}
 
 	// Re-pack DNS packet.
@@ -671,12 +681,17 @@ func (c *DnsController) resolveDNSUpstream(
 	}
 	switch upstreamIndex {
 	case consts.DnsResponseOutboundIndex_Accept:
-		// Accept.
-		if c.log.IsLevelEnabled(logrus.TraceLevel) {
-			c.log.WithFields(logrus.Fields{
-				"question": respMsg.Question,
-				"upstream": upstreamName,
-			}).Traceln("Accept")
+		question := respMsg.Question[0].Name
+		qType := QtypeToString(respMsg.Question[0].Qtype)
+		if cache.NotExists("accept" + question + qType) {
+			// Accept.
+			if c.log.IsLevelEnabled(logrus.TraceLevel) {
+				c.log.WithFields(logrus.Fields{
+					//"question": respMsg.Question,
+					"question": respMsg.Question[0].Name + "(" + qType + ")",
+					"upstream": upstreamName,
+				}).Traceln("Accept")
+			}
 		}
 	case consts.DnsResponseOutboundIndex_Reject:
 		// Reject the request with empty answer.
@@ -691,7 +706,8 @@ func (c *DnsController) resolveDNSUpstream(
 	default:
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
-				"question":      respMsg.Question,
+				//"question":      respMsg.Question,
+				"question":      respMsg.Question[0].Name + "(" + QtypeToString(respMsg.Question[0].Qtype)+")",
 				"last_upstream": upstreamName,
 				"next_upstream": nextUpstream.String(),
 			}).Traceln("Change DNS upstream and resend")

@@ -136,8 +136,8 @@ func (c *ControlPlane) reportDatapathPassthroughSummary(now time.Time, snap bpfS
 	// about healthy behaviour. The magnitude stays inspectable at
 	// --log-level debug, and the authoritative numbers live in
 	// bpf_stats_map either way.
-	c.log.WithFields(logFields).Log(logrus.DebugLevel, "datapath passthrough: the datapath forwarded packets without a routing decision. Established TCP whose "+
-		"flow has no cached conn state is what every pre-existing flow does after a restart, and a non-initial fragment carries no L4 "+
-		"header to route on; both are by design. The fields are this interval's count plus the running total, and this line stops as soon "+
-		"as the counters do")
+	/*c.log.WithFields(logFields).Log(logrus.DebugLevel, "datapath passthrough: the datapath forwarded packets without a routing decision. Established TCP whose "+
+	"flow has no cached conn state is what every pre-existing flow does after a restart, and a non-initial fragment carries no L4 "+
+	"header to route on; both are by design. The fields are this interval's count plus the running total, and this line stops as soon "+
+	"as the counters do")*/
 }

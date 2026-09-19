@@ -273,9 +273,10 @@ func (t *udpIngressTask) Run() {
 				}
 				if handler.log.IsLevelEnabled(logrus.WarnLevel) && handler.allowDnsFastPathErrorLog(time.Now()) {
 					handler.log.WithFields(logrus.Fields{
-						"src":      convergeSrc.String(),
-						"dst":      realDst.String(),
-						"question": dnsMessage.Question,
+						"src": convergeSrc.String(),
+						"dst": realDst.String(),
+						//"question": dnsMessage.Question,
+						"question": dnsMessage.Question[0].Name + "(" + QtypeToString(dnsMessage.Question[0].Qtype) + ")",
 						"error":    e.Error(),
 					}).Warn("DNS ingress fast path failed; sending SERVFAIL response")
 				}
@@ -290,11 +291,11 @@ func (t *udpIngressTask) Run() {
 				}
 			} else if handler.log.IsLevelEnabled(logrus.TraceLevel) {
 				// Success logging for DNS fast path (trace level only)
-				handler.log.WithFields(logrus.Fields{
+				/*handler.log.WithFields(logrus.Fields{
 					"src":      convergeSrc.String(),
 					"dst":      realDst.String(),
 					"question": dnsMessage.Question,
-				}).Trace("DNS ingress fast path handled successfully")
+				}).Trace("DNS ingress fast path handled successfully")*/
 			}
 			return
 		}
