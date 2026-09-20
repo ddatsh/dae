@@ -630,17 +630,46 @@ func matchAnyRegexp(regexps []*regexp2.Regexp, value string) bool {
 }
 
 func groupParamValuesByKey(params []*config_parser.Param) (map[string][]string, []string, error) {
-	grouped := make(map[string][]string)
-	var keyOrder []string
+	if len(params) == 0 {
+		return nil, nil, nil
+	}
+
+	type groupInfo struct {
+		count int
+		pos   int
+	}
+
+	info := make(map[string]groupInfo, len(params))
+	keyOrder := make([]string, 0, len(params))
+
 	for _, param := range params {
 		if len(param.AndFunctions) > 0 {
 			return nil, nil, fmt.Errorf("nested functions are not supported in internal dae DNS selectors")
 		}
-		if _, ok := grouped[param.Key]; !ok {
+
+		v, ok := info[param.Key]
+		if !ok {
 			keyOrder = append(keyOrder, param.Key)
 		}
-		grouped[param.Key] = append(grouped[param.Key], param.Val)
+
+		v.count++
+		info[param.Key] = v
 	}
+
+	grouped := make(map[string][]string, len(info))
+	for key, v := range info {
+		grouped[key] = make([]string, v.count)
+	}
+
+	for _, param := range params {
+		v := info[param.Key]
+
+		grouped[param.Key][v.pos] = param.Val
+
+		v.pos++
+		info[param.Key] = v
+	}
+
 	return grouped, keyOrder, nil
 }
 

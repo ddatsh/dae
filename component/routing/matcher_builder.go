@@ -7,10 +7,11 @@ package routing
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/pkg/config_parser"
 	"github.com/sirupsen/logrus"
-	"strconv"
 )
 
 type DomainSet struct {
@@ -90,14 +91,41 @@ func (b *RulesBuilder) Apply(rules []*config_parser.RoutingRule) (err error) {
 	return nil
 }
 
-func groupParamValuesByKey(params []*config_parser.Param) (keyToValues map[string][]string, keyOrder []string) {
-	groups := make(map[string][]string)
+func groupParamValuesByKey(params []*config_parser.Param) (map[string][]string, []string) {
+	if len(params) == 0 {
+		return nil, nil
+	}
+
+	type groupInfo struct {
+		count int
+		pos   int
+	}
+
+	info := make(map[string]groupInfo, len(params))
+	keyOrder := make([]string, 0, len(params))
+
 	for _, param := range params {
-		if _, ok := groups[param.Key]; !ok {
+		v, ok := info[param.Key]
+		if !ok {
 			keyOrder = append(keyOrder, param.Key)
 		}
-		groups[param.Key] = append(groups[param.Key], param.Val)
+		v.count++
+		info[param.Key] = v
 	}
+
+	groups := make(map[string][]string, len(info))
+
+	for key, v := range info {
+		groups[key] = make([]string, v.count)
+	}
+
+	for _, param := range params {
+		v := info[param.Key]
+		groups[param.Key][v.pos] = param.Val
+		v.pos++
+		info[param.Key] = v
+	}
+
 	return groups, keyOrder
 }
 
