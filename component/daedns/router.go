@@ -630,8 +630,8 @@ func matchAnyRegexp(regexps []*regexp2.Regexp, value string) bool {
 }
 
 func groupParamValuesByKey(params []*config_parser.Param) (map[string][]string, []string, error) {
-	grouped := make(map[string][]string)
-	var keyOrder []string
+	grouped := make(map[string][]string, len(params))
+	keyOrder := make([]string, 0, len(params))
 	for _, param := range params {
 		if len(param.AndFunctions) > 0 {
 			return nil, nil, fmt.Errorf("nested functions are not supported in internal dae DNS selectors")
