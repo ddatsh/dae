@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daeuniverse/dae/pkg/prof"
 	"github.com/daeuniverse/outbound/netproxy"
 	"github.com/daeuniverse/outbound/protocol/direct"
 	"github.com/mohae/deepcopy"
@@ -401,6 +402,6 @@ func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, d
 	}
 	log.Infof("Control plane built in %v", time.Since(stageStart))
 	log.Infof("Total startup time: %v", time.Since(startTime))
-
+	prof.Stop()
 	return c, nil
 }
