@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/daeuniverse/dae/pkg/prof"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	_ "net/http/pprof"
@@ -241,6 +242,7 @@ var (
 				internal.AutoSu()
 			}
 
+			prof.Start()
 			// Read config from --config cfgFile.
 			conf, includes, err := readConfig(cfgFile)
 			if err != nil {

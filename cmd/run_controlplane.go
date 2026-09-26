@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daeuniverse/dae/pkg/prof"
 	"github.com/daeuniverse/outbound/netproxy"
 	"github.com/daeuniverse/outbound/protocol/direct"
 	"github.com/mohae/deepcopy"
@@ -206,8 +207,6 @@ func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, d
 		defer func() { _ = daeDNSRouter.Close() }()
 	}
 
-	// Start timing the startup process
-	startTime := time.Now()
 	// Reused across phases; each stage resets it right before its work.
 	var stageStart time.Time
 
@@ -400,7 +399,7 @@ func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, d
 		return nil, err
 	}
 	log.Infof("Control plane built in %v", time.Since(stageStart))
-	log.Infof("Total startup time: %v", time.Since(startTime))
-
+	log.Infof("Total startup time: %v", time.Since(prof.StartTime()))
+	prof.Stop()
 	return c, nil
 }
