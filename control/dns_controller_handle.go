@@ -304,6 +304,10 @@ func (c *DnsController) HandleWithResponseWriter_(ctx context.Context, dnsMessag
 		baseCacheKey = c.cacheKey(qname, qtype)
 	}
 
+	if dnsMessage.Truncated == true {
+		dnsMessage.Truncated = false
+	}
+
 	// Route request first, then check cache.
 	// This ensures Reject rules are always applied, even if cache exists.
 	// Cache lookup overhead (~1µs) is negligible compared to network latency (~ms).
