@@ -14,11 +14,13 @@ import (
 
 	"github.com/daeuniverse/dae/cmd"
 	"github.com/daeuniverse/dae/common/json"
+	"github.com/daeuniverse/dae/pkg/prof"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/json-iterator/go/extra"
 )
 
 func main() {
+	prof.Start()
 	jsoniter.RegisterTypeDecoder("bool", &json.FuzzyBoolDecoder{})
 	extra.RegisterFuzzyDecoders()
 
