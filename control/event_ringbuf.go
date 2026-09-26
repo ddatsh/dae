@@ -229,10 +229,10 @@ func reportDatapathEventAt(c *ControlPlane, level logrus.Level, ev *daeEvent, ms
 	if c == nil || c.log == nil {
 		return
 	}
-	c.log.Logf(level, "datapath anomaly: %s (type=%d pid=%d outbound=%d l4proto=%d %s:%d > %s:%d)",
+/*	c.log.Logf(level, "datapath anomaly: %s (type=%d pid=%d outbound=%d l4proto=%d %s:%d > %s:%d)",
 		msg, ev.Type, ev.Pid, ev.Outbound, ev.L4proto,
 		netIPString(ev.Sip), netPortString(ev.Sport),
-		netIPString(ev.Dip), netPortString(ev.Dport))
+		netIPString(ev.Dip), netPortString(ev.Dport))*/
 }
 
 // netPortString renders a port from a ringbuf record. The kernel copies the

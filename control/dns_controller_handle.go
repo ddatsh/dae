@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strings"
 	"time"
 
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/common/netutils"
 	"github.com/daeuniverse/dae/component/dns"
 	"github.com/daeuniverse/dae/component/outbound/dialer"
+	"github.com/daeuniverse/dae/pkg/cache"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -493,6 +493,7 @@ func (c *DnsController) serveFromRespCacheWithRefresh_(dnsMessage *dnsmessage.Ms
 	if err := c.writeCachedResponse(resp, dnsMessage.Id, req, responseWriter, dnsMessage); err != nil {
 		return true, err
 	}
+	/*
 	if c.log.IsLevelEnabled(logrus.DebugLevel) && len(dnsMessage.Question) > 0 {
 		q := dnsMessage.Question[0]
 		l := c.log.WithFields(logrus.Fields{
@@ -508,6 +509,7 @@ func (c *DnsController) serveFromRespCacheWithRefresh_(dnsMessage *dnsmessage.Ms
 		}
 		l.Debug("cache hit")
 	}
+	*/
 	return true, nil
 }
 
@@ -564,7 +566,8 @@ func (c *DnsController) handleWithResponseWriter_(
 			upstreamName = upstream.String()
 		}
 		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
+			//"question": dnsMessage.Question,
+			"question": dnsMessage.Question[0].Name + "(" + QtypeToString(dnsMessage.Question[0].Qtype) + ")",
 			"upstream": upstreamName,
 		}).Traceln("Request to DNS upstream")
 	}
@@ -675,12 +678,17 @@ func (c *DnsController) resolveDNSUpstream(
 	}
 	switch upstreamIndex {
 	case consts.DnsResponseOutboundIndex_Accept:
-		// Accept.
-		if c.log.IsLevelEnabled(logrus.TraceLevel) {
-			c.log.WithFields(logrus.Fields{
-				"question": respMsg.Question,
-				"upstream": upstreamName,
-			}).Traceln("Accept")
+		question := respMsg.Question[0].Name
+		qType := QtypeToString(respMsg.Question[0].Qtype)
+		if cache.NotExists("accept" + question + qType) {
+			// Accept.
+			if c.log.IsLevelEnabled(logrus.TraceLevel) {
+				c.log.WithFields(logrus.Fields{
+					//"question": respMsg.Question,
+					"question": respMsg.Question[0].Name + "(" + qType + ")",
+					"upstream": upstreamName,
+				}).Traceln("Accept")
+			}
 		}
 	case consts.DnsResponseOutboundIndex_Reject:
 		// Reject the request with empty answer.
@@ -695,7 +703,8 @@ func (c *DnsController) resolveDNSUpstream(
 	default:
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
-				"question":      respMsg.Question,
+				//"question":      respMsg.Question,
+				"question":      respMsg.Question[0].Name + "(" + QtypeToString(respMsg.Question[0].Qtype) + ")",
 				"last_upstream": upstreamName,
 				"next_upstream": nextUpstream.String(),
 			}).Traceln("Change DNS upstream and resend")

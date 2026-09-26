@@ -339,7 +339,7 @@ func (o *DatReaderOptimizer) Optimize(rules []*config_parser.RoutingRule) ([]*co
 
 			// Process this rule's functions
 			for _, f := range r.AndFunctions {
-				var newParams []*config_parser.Param
+				var newParams= make([]*config_parser.Param, 0, len(f.Params))
 				var loadErr error
 				for _, param := range f.Params {
 					// Parse this param and replace it with more.

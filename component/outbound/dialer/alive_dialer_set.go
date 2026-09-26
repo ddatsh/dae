@@ -417,14 +417,14 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 				newBestDialer := a.minLatency.dialer
 				newBestLatency := a.dialerToLatency[newBestDialer]
 				newBestOffset := a.dialerToLatencyOffset[newBestDialer]
-				re := "re-"
+				//re := "re-"
 				var oldDialerName string
 				if bakOldBestDialer == nil {
 					// Not alive -> alive
 					a.mu.Unlock()
 					a.aliveChangeCallback(true)
 					a.mu.Lock()
-					re = ""
+					//re = ""
 					oldDialerName = "<nil>"
 				} else {
 					oldDialerName = bakOldBestDialer.property.Name
@@ -452,7 +452,7 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 						delta := newBestLatency + newBestOffset - bakOldMinSortingLatency
 						fields["latency_delta_ms"] = delta.Milliseconds()
 					}
-					a.log.WithFields(fields).Infof("Group %vselects dialer", re)
+					//a.log.WithFields(fields).Infof("Group %vselects dialer", re)
 				}
 
 				// Lock order / critical-section discipline: the snapshot is
@@ -461,11 +461,11 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 				// below. Holding a.mu across the render would serialize every
 				// other latency update behind a full-list sort and a log
 				// write (the caller may hold the group's publish lock too).
-				if snap, ok := a.snapshotLatenciesLocked(); ok {
+				/*if snap, ok := a.snapshotLatenciesLocked(); ok {
 					a.mu.Unlock()
 					a.printLatenciesOutOfLock(snap)
 					a.mu.Lock()
-				}
+				}*/
 			} else {
 				// Alive -> not alive
 				a.mu.Unlock()

@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/daeuniverse/dae/pkg/cache"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -270,11 +271,17 @@ func (c *DnsController) sendDnsErrorResponse_(
 	dnsMessage.RecursionAvailable = true
 	dnsMessage.Truncated = truncated
 	dnsMessage.Compress = true
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
-		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
-		}).Traceln(traceMsg)
+	qName:=dnsMessage.Question[0].Name
+	qType:=QtypeToString(dnsMessage.Question[0].Qtype)
+	if cache.NotExists(traceMsg + dnsMessage.Question[0].Name+qType) {
+		if c.log.IsLevelEnabled(logrus.TraceLevel) {
+			c.log.WithFields(logrus.Fields{
+				//"question": dnsMessage.Question,
+				"question": qName + "(" + qType+")",
+			}).Traceln(traceMsg)
+		}
 	}
+
 	if responseWriter != nil {
 		return responseWriter.WriteMsg(dnsMessage)
 	}
