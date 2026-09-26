@@ -17,6 +17,7 @@ import (
 	"github.com/daeuniverse/dae/config"
 	"github.com/daeuniverse/dae/control"
 	"github.com/daeuniverse/dae/pkg/logger"
+	"github.com/daeuniverse/dae/pkg/prof"
 	"github.com/mohae/deepcopy"
 	"github.com/okzk/sdnotify"
 	"github.com/sirupsen/logrus"
@@ -87,6 +88,8 @@ func (w *reloadWorker) run() {
 		if req.isSuspend {
 			w.log.Infoln("[Reload] Received suspend signal; prepare to suspend")
 		} else {
+			prof.ResetTime()
+			prof.Start()
 			w.log.Infoln("[Reload] Received reload signal; prepare to reload")
 		}
 		_ = sdnotify.Reloading()
