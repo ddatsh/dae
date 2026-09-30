@@ -89,7 +89,9 @@ endif
 
 BUILD_ARGS := -trimpath -ldflags "-s -w -X github.com/daeuniverse/dae/cmd.Version=$(VERSION) -X github.com/daeuniverse/dae/common/consts.MaxMatchSetLen_=$(MAX_MATCH_SET_LEN)" $(BUILD_ARGS)
 
-.PHONY: clean-ebpf clean-ebpf-test ebpf ebpf-sync ebpf-sync-check ebpf-test-tagged ebpf-test-debug ebpf-test-debug-tagged ebpf-audit dae submodule submodules print-goexperiment print-goexperiment-env print-trace-unsupported
+DEBUG_BUILD_ARGS := -trimpath -ldflags "-X github.com/daeuniverse/dae/cmd.Version=$(VERSION) -X github.com/daeuniverse/dae/common/consts.MaxMatchSetLen_=$(MAX_MATCH_SET_LEN)"
+
+.PHONY: clean-ebpf clean-ebpf-test ebpf ebpf-sync ebpf-sync-check ebpf-test-tagged ebpf-test-debug ebpf-test-debug-tagged ebpf-audit dae debug submodule submodules print-goexperiment print-goexperiment-env print-trace-unsupported
 
 ## Begin Dae Build
 dae: export GOOS=linux
@@ -100,6 +102,16 @@ dae: ebpf
 	@echo $(CFLAGS)
 	go build -tags=$(shell cat $(BUILD_TAGS_FILE)) -o $(OUTPUT) $(BUILD_ARGS) .
 ## End Dae Build
+
+## Begin Dae Debug Build
+debug: export GOOS=linux
+ifndef CGO_ENABLED
+debug: export CGO_ENABLED=0
+endif
+debug: ebpf
+	@echo $(CFLAGS)
+	go build -gcflags "all=-N -l" -tags=$(shell cat $(BUILD_TAGS_FILE)) -o $(OUTPUT) $(DEBUG_BUILD_ARGS) .
+## End Dae Debug Build
 
 ## Begin Git Submodules
 .gitmodules.d.mk: .gitmodules

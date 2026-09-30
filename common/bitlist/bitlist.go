@@ -29,7 +29,7 @@ func NewCompactBitList(unitBitSize int) *CompactBitList {
 	}
 }
 
-// Set function is not optimized yet.
+// Set replaces a unit a storage word at a time, preserving adjacent units.
 func (m *CompactBitList) Set(iUnit int, v uint64) {
 	if bits.Len64(v) > m.unitBitSize {
 		panic(fmt.Sprintf("value %v exceeds unit bit size", v))
@@ -38,33 +38,22 @@ func (m *CompactBitList) Set(iUnit int, v uint64) {
 	b := m.b.Slice()
 	i := iUnit * m.unitBitSize / 16
 	j := iUnit * m.unitBitSize % 16
-	for unitToTravel := m.unitBitSize; unitToTravel > 0; unitToTravel -= 16 {
-		k := 0
-		for ; k < unitToTravel && j+k < 16; k++ {
-			b[i] &= ^(1 << (k + j)) // clear bit.
-			val := uint16((v & (1 << k)) << j)
-			b[i] |= val // set bit.
-		}
-		// Now unitBitSize is traveled and we should break the loop,
-		// OR we did not travel the byte and we need to travel the next byte.
-		if k >= unitToTravel {
-			break
-		}
+	for remaining := m.unitBitSize; remaining > 0; {
+		n := min(remaining, 16-j)
+		mask := uint16((uint32(1)<<n - 1) << j)
+		b[i] = b[i]&^mask | uint16(v<<j)&mask
+		v >>= n
+		remaining -= n
 		i++
-		bakJ := j
-		j = k
-		for ; k < unitToTravel && k < 16; k++ {
-			b[i] &= ^(1 << (k - j)) // clear bit.
-			val := uint16((v & (1 << k)) >> j)
-			b[i] |= val // set bit.
-		}
-		v >>= 16
-		j = (bakJ + 16) % 16
+		j = 0
 	}
 	m.unitNum = common.Max(m.unitNum, iUnit+1)
 }
 
 func (m *CompactBitList) Get(iUnit int) (v uint64) {
+	if m.unitBitSize == 0 {
+		return 0
+	}
 	bitBoundary := (iUnit + 1) * m.unitBitSize
 	if m.b.Len()*16 < bitBoundary {
 		return 0

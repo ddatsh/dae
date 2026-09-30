@@ -364,7 +364,7 @@ func (c *controlPlaneCore) setupTCPRelayOffload() error {
 	// session enforces tcpOffloadMaxPeerBacklog as a mitigation, but the
 	// feature stays off unless explicitly enabled.
 	if os.Getenv("DAE_ALLOW_TCP_SOCKMAP") != "1" {
-		c.log.Debug("TCP relay eBPF offload disabled (opt-in via DAE_ALLOW_TCP_SOCKMAP=1)")
+		//c.log.Debug("TCP relay eBPF offload disabled (opt-in via DAE_ALLOW_TCP_SOCKMAP=1)")
 		return nil
 	}
 

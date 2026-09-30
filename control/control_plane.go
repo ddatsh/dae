@@ -164,6 +164,8 @@ var policyEpochSequence atomic.Uint64
 // kernel datapath until CommitPreparedDatapath; IsReload selects reload-mode
 // TC handle flipping and skips startup-only stale hook purges.
 type ControlPlaneBuildOptions struct {
+	// Compiled from this generation's DNS config by the subscription router.
+	CompiledDNSRequestRouting *dns.CompiledRequestRouting
 	DelayDatapathCommit   bool
 	DelayDNSListenerStart bool
 	DNSRoutingUnchanged   bool
@@ -316,6 +318,11 @@ func NewControlPlaneWithContextOptions(
 	externGeoDataDirs []string,
 	buildOpts ControlPlaneBuildOptions,
 ) (plane *ControlPlane, err error) {
+	stageStart := time.Now()
+	finishStage := func(stage string) {
+		log.Infof("Control plane stage %s took %v", stage, time.Since(stageStart))
+		stageStart = time.Now()
+	}
 	var freshDatapathState *FreshDatapathState
 	if state, ok := _bpf.(*FreshDatapathState); ok {
 		freshDatapathState = state
@@ -458,7 +465,7 @@ func NewControlPlaneWithContextOptions(
 			return nil, err
 		}
 		log.Infof("Loading eBPF programs and maps into the kernel...")
-		log.Infof("The loading process takes about 120MB free memory, which will be released after loading. Insufficient memory will cause loading failure.")
+		//log.Infof("The loading process takes about 120MB free memory, which will be released after loading. Insufficient memory will cause loading failure.")
 	}
 	// var bpf bpfObjects
 	ProgramOptions := ebpf.ProgramOptions{
@@ -520,6 +527,7 @@ func NewControlPlaneWithContextOptions(
 		return nil, fmt.Errorf("validate bpf maps: %w", err)
 	}
 	log.Infof("Loaded eBPF programs and maps")
+	finishStage("kernel and eBPF setup")
 	// outboundId2Name can be modified later.
 	outboundId2Name := make(map[uint8]string)
 	core := newControlPlaneCore(
@@ -607,8 +615,9 @@ func NewControlPlaneWithContextOptions(
 	})
 
 	option.DaeDNS, err = daedns.NewWithOption(log, global, dnsConfig, &daedns.NewOption{
-		LocationFinder: locationFinder,
-		DirectDialer:   directDialer,
+		LocationFinder:         locationFinder,
+		DirectDialer:           directDialer,
+		CompiledRequestRouting: buildOpts.CompiledDNSRequestRouting,
 	})
 	if err != nil {
 		return nil, err
@@ -668,7 +677,7 @@ func NewControlPlaneWithContextOptions(
 			return nil, fmt.Errorf(`failed to create group "%v": %w`, group.Name, err)
 		}
 		// Convert node links to dialers.
-		if log.IsLevelEnabled(logrus.DebugLevel) {
+		/*if log.IsLevelEnabled(logrus.DebugLevel) {
 			log.Debugf(`Group "%v" node list:`, group.Name)
 			for _, d := range dialers {
 				log.Debugln("\t" + d.Property().Name)
@@ -676,7 +685,7 @@ func NewControlPlaneWithContextOptions(
 			if len(dialers) == 0 {
 				log.Debugln("\t<Empty>")
 			}
-		}
+		}*/
 		groupOption, err := parseGroupOverrideOptionWithRuntime(group, *global, log, option)
 		finalOption := option
 		if err == nil && groupOption != nil {
@@ -720,8 +729,9 @@ func NewControlPlaneWithContextOptions(
 		outboundName2Id[o.Name] = uint8(i)
 		outboundId2Name[uint8(i)] = o.Name
 	}
+	finishStage("outbound setup")
 	// Apply rules optimizers.
-	log.Infoln("Optimizing and loading routing rules (this may take a while for large rule sets)...")
+	//log.Infoln("Optimizing and loading routing rules (this may take a while for large rule sets)...")
 	if err := checkCtx("optimize routing rules"); err != nil {
 		return nil, err
 	}
@@ -762,20 +772,22 @@ func NewControlPlaneWithContextOptions(
 	if err = core.clearDomainRoutingSlot(core.RoutingEpochSlot()); err != nil {
 		return nil, fmt.Errorf("clear inactive domain routing epoch: %w", err)
 	}
-	if log.IsLevelEnabled(logrus.DebugLevel) {
+	/*	if log.IsLevelEnabled(logrus.DebugLevel) {
 		var debugBuilder strings.Builder
 		for _, rule := range routingProgram.Rules {
 			debugBuilder.WriteString(rule.String(true, false, false) + "\n")
 		}
 		log.Debugf("RoutingA:\n%vfallback: %v\n", debugBuilder.String(), routingProgram.Fallback)
-	}
+	}*/
 	// Parse rules and build.
+	finishStage("routing normalization and epoch setup")
 	log.Infoln("Building routing matcher...")
 	builder, err := NewRoutingMatcherBuilderFromProgram(log, routingProgram, outboundName2Id, core.bpf.Load())
 	if err != nil {
 		return nil, fmt.Errorf("NewRoutingMatcherBuilder: %w", err)
 	}
 	kernspaceSnapshot := builder.KernspaceSnapshot()
+	finishStage("routing matcher preparation")
 	if !buildOpts.DelayDatapathCommit {
 		log.Infoln("Loading routing rules into kernel space (BPF)...")
 		if err = core.buildRoutingKernspaceForSlot(log, kernspaceSnapshot); err != nil {
@@ -787,11 +799,13 @@ func NewControlPlaneWithContextOptions(
 	} else {
 		log.Infoln("Prepared routing matcher; kernel-space routing commit deferred until listener cutover")
 	}
+	finishStage("kernel routing installation")
 	log.Infoln("Building userspace routing matcher...")
 	routingMatcher, err := builder.BuildUserspace()
 	if err != nil {
 		return nil, fmt.Errorf("RoutingMatcherBuilder.BuildUserspace: %w", err)
 	}
+	finishStage("userspace routing matcher")
 
 	// Get referenced outbounds to limit health checks.
 	referencedOutbounds := builder.GetReferencedOutbounds()
@@ -896,7 +910,9 @@ func NewControlPlaneWithContextOptions(
 	}
 
 	/// DNS upstream.
+	finishStage("runtime initialization")
 	dnsUpstream, err := dns.New(dnsConfig, &dns.NewOption{
+		CompiledRequestRouting:  option.DaeDNS.RequestRouting(),
 		Logger:                  log,
 		LocationFinder:          locationFinder,
 		UpstreamReadyCallback:   plane.dnsUpstreamReadyCallback,
@@ -907,6 +923,7 @@ func NewControlPlaneWithContextOptions(
 		return nil, err
 	}
 	/// Dns controller.
+	finishStage("DNS routing construction")
 	fixedDomainTtl, err := ParseFixedDomainTtl(dnsConfig.FixedDomainTtl)
 	if err != nil {
 		return nil, err
@@ -976,6 +993,7 @@ func NewControlPlaneWithContextOptions(
 		plane.releaseCommittedDNSReloadState()
 		plane.markReady()
 	}
+	finishStage("DNS listeners and datapath activation")
 	return plane, nil
 }
 
@@ -1642,13 +1660,15 @@ func (c *ControlPlane) runReloadRetirementCleanup(staleBeforeNs uint64) {
 		}
 		return
 	}
-	c.log.WithFields(logrus.Fields{
-		"redirect_deleted":        redirectDeleted,
-		"cookie_pid_deleted":      cookieDeleted,
-		"routing_handoff_deleted": routingHandoffDeleted,
-		"udp_conn_deleted":        udpStats.deleted,
-		"tcp_conn_deleted":        tcpStats.deleted,
-	}).Infoln("[Reload] Cleaned stale datapath state after generation retirement")
+	/*
+		c.log.WithFields(logrus.Fields{
+			"redirect_deleted":        redirectDeleted,
+			"cookie_pid_deleted":      cookieDeleted,
+			"routing_handoff_deleted": routingHandoffDeleted,
+			"udp_conn_deleted":        udpStats.deleted,
+			"tcp_conn_deleted":        tcpStats.deleted,
+		}).Infoln("[Reload] Cleaned stale datapath state after generation retirement")
+	*/
 }
 
 // redirectTrackTimeout is the TTL for redirect entries.
@@ -1749,9 +1769,11 @@ func (c *ControlPlane) cleanupRedirectTrackMapBeforeLocked(staleBeforeNs uint64)
 	}
 
 	// Only log when there are actual changes
-	if len(keysToDelete) > 0 {
-		c.log.Debugf("cleanupRedirectTrackMap: removed %d entries", len(keysToDelete))
-	}
+	/*
+		if len(keysToDelete) > 0 {
+			c.log.Debugf("cleanupRedirectTrackMap: removed %d entries", len(keysToDelete))
+		}
+	*/
 
 	// Alert if map usage is high. The capacity is read from the loaded map
 	// instead of a second hard-coded copy of MAX_REDIRECT_TRACK_NUM: the map
@@ -1832,7 +1854,7 @@ func (c *ControlPlane) cleanupCookiePidMapBeforeLocked(staleBeforeNs uint64) int
 		if _, err := BpfMapBatchDelete(bpf.CookiePidMap, keysToDelete); err != nil {
 			c.log.Debugf("cleanupCookiePidMap: batch delete error: %v", err)
 		}
-		c.log.Debugf("cleanupCookiePidMap: removed %d entries", len(keysToDelete))
+		//c.log.Debugf("cleanupCookiePidMap: removed %d entries", len(keysToDelete))
 	}
 
 	maxEntries := bpf.CookiePidMap.MaxEntries()
@@ -1908,7 +1930,7 @@ func (c *ControlPlane) cleanupRoutingHandoffMapBeforeLocked(staleBeforeNs uint64
 		if _, deleteErr := BpfMapBatchDelete(bpf.RoutingHandoffMap, keysToDelete); deleteErr != nil {
 			c.log.Debugf("cleanupRoutingHandoffMap: batch delete error: %v", deleteErr)
 		}
-		c.log.Debugf("cleanupRoutingHandoffMap: removed %d expired entries", len(keysToDelete))
+		//c.log.Debugf("cleanupRoutingHandoffMap: removed %d expired entries", len(keysToDelete))
 	}
 
 	maxEntries := bpf.RoutingHandoffMap.MaxEntries()
@@ -2919,25 +2941,27 @@ func (c *ControlPlane) chooseBestDnsDialerSnapshot(
 	case consts.IpVersionStr_6:
 		selected.bestTarget = netip.AddrPortFrom(dnsUpstream.Ip6, dnsUpstream.Port)
 	}
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
-		fields := logrus.Fields{
-			"ipversions": ipversions,
-			"l4protos":   l4protos,
-			"upstream":   dnsUpstream.String(),
-			"choose":     string(selected.l4proto) + "+" + string(selected.ipversion),
-			"use":        selected.bestTarget.String(),
+	/*
+		if c.log.IsLevelEnabled(logrus.TraceLevel) {
+			fields := logrus.Fields{
+				"ipversions": ipversions,
+				"l4protos":   l4protos,
+				"upstream":   dnsUpstream.String(),
+				"choose":     string(selected.l4proto) + "+" + string(selected.ipversion),
+				"use":        selected.bestTarget.String(),
+			}
+			if selected.bestOutbound != nil {
+				fields["outbound"] = selected.bestOutbound.Name
+			}
+			if selected.bestDialer != nil {
+				fields["dialer"] = selected.bestDialer.Property().Name
+			}
+			if selectedPenalized {
+				fields["penalized_fallback"] = true
+			}
+			c.log.WithFields(fields).Traceln("Choose DNS path")
 		}
-		if selected.bestOutbound != nil {
-			fields["outbound"] = selected.bestOutbound.Name
-		}
-		if selected.bestDialer != nil {
-			fields["dialer"] = selected.bestDialer.Property().Name
-		}
-		if selectedPenalized {
-			fields["penalized_fallback"] = true
-		}
-		c.log.WithFields(fields).Traceln("Choose DNS path")
-	}
+	*/
 	if snapshotEnabled && !selectedPenalized {
 		c.storeDnsDialerSnapshot(snapshotKey, &selected, now)
 	}

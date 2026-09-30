@@ -316,6 +316,7 @@ func ToSuffixTrieStrings(s []string) []string {
 	return to
 }
 func (n *AhocorasickSlimtrie) Build() (err error) {
+	//buildStart := time.Now()
 	n.matchMu.Lock()
 	n.matchCache = nil
 	n.matchCacheOrd = nil
@@ -384,7 +385,7 @@ func (n *AhocorasickSlimtrie) Build() (err error) {
 				defer func() { <-sem }()
 				defer innerWg.Done()
 				transformed := ToSuffixTrieStrings(patterns)
-				t, err := trie.NewTrie(transformed, ValidDomainChars)
+				t, err := trie.NewTrieInPlace(transformed, ValidDomainChars)
 				if err != nil {
 					mu.Lock()
 					if buildErr == nil {
@@ -422,6 +423,12 @@ func (n *AhocorasickSlimtrie) Build() (err error) {
 
 	// Reclaim temporary build allocations (BFS queues, transformed string
 	// slices) immediately so peak memory does not linger into steady state.
-	runtime.GC()
+	/*	gcStart := time.Now()
+		runtime.GC()
+		gcDuration := time.Since(gcStart)
+		if n.log != nil {
+			n.log.Infof("Domain matcher built in %v (GC: %v, workers per matcher type: %d, tries: %d, AC sets: %d)",
+				time.Since(buildStart), gcDuration, numWorkers, len(n.validTrieIndexes), len(n.validAcIndexes))
+		}*/
 	return nil
 }

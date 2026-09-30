@@ -29,6 +29,7 @@ import (
 	"github.com/daeuniverse/dae/common/netutils"
 	"github.com/daeuniverse/dae/common/subscription"
 	"github.com/daeuniverse/dae/component/daedns"
+	componentdns "github.com/daeuniverse/dae/component/dns"
 	"github.com/daeuniverse/dae/config"
 	"github.com/daeuniverse/dae/control"
 	"github.com/sirupsen/logrus"
@@ -85,6 +86,7 @@ func buildControlPlaneRuntime(
 	prepareOnly bool,
 	dnsRoutingUnchanged bool,
 	isReloadBuild bool,
+	requestRouting *componentdns.CompiledRequestRouting,
 ) (*control.ControlPlane, error) {
 	return control.NewControlPlaneWithContextOptions(
 		ctx,
@@ -98,6 +100,7 @@ func buildControlPlaneRuntime(
 		dns,
 		externGeoDataDirs,
 		control.ControlPlaneBuildOptions{
+			CompiledDNSRequestRouting: requestRouting,
 			DelayDatapathCommit:   prepareOnly,
 			DelayDNSListenerStart: prepareOnly,
 			DNSRoutingUnchanged:   dnsRoutingUnchanged,
@@ -163,6 +166,7 @@ func configureGcMemoryLimit(log *logrus.Logger) {
 }
 
 func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, dnsCache map[string]*control.DnsCache, conf *config.Config, externGeoDataDirs []string, prepareOnly bool, dnsRoutingUnchanged bool, isReloadBuild bool) (c *control.ControlPlane, err error) {
+	startTime := time.Now()
 	// Deep copy to prevent modification.
 	conf = deepcopy.Copy(conf).(*config.Config)
 	if conf.Global.SoMarkFromDae == 0 {
@@ -207,8 +211,7 @@ func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, d
 		defer func() { _ = daeDNSRouter.Close() }()
 	}
 
-	// Start timing the startup process
-	startTime := time.Now()
+	log.Infof("Initial configuration and DNS routing built in %v", time.Since(startTime))
 	// Reused across phases; each stage resets it right before its work.
 	var stageStart time.Time
 
@@ -396,6 +399,7 @@ func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, d
 		prepareOnly,
 		dnsRoutingUnchanged,
 		isReloadBuild,
+		daeDNSRouter.RequestRouting(),
 	)
 	if err != nil {
 		return nil, err

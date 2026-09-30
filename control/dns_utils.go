@@ -29,13 +29,29 @@ func (w RscWrapper) String() string {
 	default:
 		strBody = body.String()
 	}
-	return fmt.Sprintf("%v(%v): %v", w.Rsc.Header().Name, QtypeToString(w.Rsc.Header().Rrtype), strBody)
+	return fmt.Sprintf("%v(%v): %v", strings.TrimSuffix(w.Rsc.Header().Name, "."), QtypeToString(w.Rsc.Header().Rrtype), strBody)
 }
 
 func FormatDnsRsc(ans []dnsmessage.RR) string {
-	var w []string
+	grouped := make(map[string][]string)
+	var order []string
+
 	for _, a := range ans {
-		w = append(w, RscWrapper{Rsc: a}.String())
+		s := RscWrapper{Rsc: a}.String()
+		parts := strings.SplitN(s, ": ", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key, val := parts[0], parts[1]
+		if _, ok := grouped[key]; !ok {
+			order = append(order, key)
+		}
+		grouped[key] = append(grouped[key], strings.TrimSuffix(val, "."))
+	}
+
+	var w []string
+	for _, key := range order {
+		w = append(w, key+": "+strings.Join(grouped[key], ", "))
 	}
 	return strings.Join(w, "; ")
 }

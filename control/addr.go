@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+
+	"github.com/daeuniverse/dae/pkg/cache"
 )
 
 func RefineSourceToShow(src netip.AddrPort, dst netip.Addr) (srcToShow string) {
@@ -21,5 +23,6 @@ func RefineSourceToShow(src netip.AddrPort, dst netip.Addr) (srcToShow string) {
 }
 
 func RefineAddrPortToShow(addrPort netip.AddrPort) (srcToShow string) {
-	return net.JoinHostPort(net.IP(addrPort.Addr().AsSlice()).String(), strconv.Itoa(int(addrPort.Port())))
+	return cache.Name(addrPort.Addr().String())
+	//return net.JoinHostPort(net.IP(addrPort.Addr().AsSlice()).String(), strconv.Itoa(int(addrPort.Port())))
 }

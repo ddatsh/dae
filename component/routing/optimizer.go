@@ -211,7 +211,7 @@ func (o *DatReaderOptimizer) loadGeoSite(filename string, code string) (params [
 		o.Logger.Debugf("Failed to read geosite \"%v:%v\": %v", filename, code, err)
 		return nil, err
 	}
-	o.Logger.Debugf("Read geosite \"%v:%v\" from %v", filename, code, filePath)
+	//o.Logger.Debugf("Read geosite \"%v:%v\" from %v", filename, code, filePath)
 	code, attr, _ := strings.Cut(code, "@")
 	geoSite, err := geodata.UnmarshalGeoSite(o.Logger, filePath, code)
 	if err != nil {
@@ -288,7 +288,7 @@ func (o *DatReaderOptimizer) loadGeoIp(filename string, code string) (params []*
 		o.Logger.Debugf("Failed to read geoip \"%v:%v\": %v", filename, code, err)
 		return nil, err
 	}
-	o.Logger.Debugf("Read geoip \"%v:%v\" from %v", filename, code, filePath)
+	//o.Logger.Debugf("Read geoip \"%v:%v\" from %v", filename, code, filePath)
 	geoIp, err := geodata.UnmarshalGeoIp(o.Logger, filePath, code)
 	if err != nil {
 		return nil, err
@@ -339,7 +339,7 @@ func (o *DatReaderOptimizer) Optimize(rules []*config_parser.RoutingRule) ([]*co
 
 			// Process this rule's functions
 			for _, f := range r.AndFunctions {
-				var newParams []*config_parser.Param
+				var newParams = make([]*config_parser.Param, 0, len(f.Params))
 				var loadErr error
 				for _, param := range f.Params {
 					// Parse this param and replace it with more.

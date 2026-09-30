@@ -282,7 +282,7 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 	// registered under their own CheckTyp collection, so the revalidated
 	// state is the very state the notification was derived from.
 	if actual := dialer.MustGetAlive(a.CheckTyp); actual != alive {
-		if a.log.IsLevelEnabled(logrus.DebugLevel) {
+		/*	if a.log.IsLevelEnabled(logrus.DebugLevel) {
 			a.log.WithFields(logrus.Fields{
 				"group":        a.dialerGroupName,
 				"dialer":       dialer.property.Name,
@@ -291,7 +291,7 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 				"actual":       actual,
 				"notifySource": "out-of-order availability notification",
 			}).Debugln("NotifyLatencyChange: ignoring stale availability notification")
-		}
+		}*/
 		alive = actual
 	}
 
@@ -320,14 +320,14 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 			// This dialer is already alive.
 		} else {
 			// Dialer: not alive -> alive.
-			if index == -NotAlive {
+			/*if index == -NotAlive {
 				if a.log.IsLevelEnabled(logrus.InfoLevel) {
 					a.log.WithFields(logrus.Fields{
 						"dialer": dialer.property.Name,
 						"group":  a.dialerGroupName,
 					}).Infof("[NOT ALIVE --%v-> ALIVE]", a.CheckTyp.String())
 				}
-			}
+			}*/
 			a.dialerToIndex[dialer] = len(a.aliveEntries)
 			a.aliveEntries = append(a.aliveEntries, aliveEntry{
 				dialer:         dialer,
@@ -339,12 +339,12 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 		if index >= 0 {
 			removedBestWithoutLatency := minPolicy && !hasLatency && a.minLatency.dialer == dialer
 			// Dialer: alive -> not alive.
-			if a.log.IsLevelEnabled(logrus.InfoLevel) {
+			/*if a.log.IsLevelEnabled(logrus.InfoLevel) {
 				a.log.WithFields(logrus.Fields{
 					"dialer": dialer.property.Name,
 					"group":  a.dialerGroupName,
 				}).Infof("[ALIVE --%v-> NOT ALIVE]", a.CheckTyp.String())
-			}
+			}*/
 			// Remove the dialer from aliveEntries.
 			if index >= len(a.aliveEntries) {
 				a.log.Panicf("index:%v >= len(a.aliveEntries):%v", index, len(a.aliveEntries))
@@ -417,14 +417,14 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 				newBestDialer := a.minLatency.dialer
 				newBestLatency := a.dialerToLatency[newBestDialer]
 				newBestOffset := a.dialerToLatencyOffset[newBestDialer]
-				re := "re-"
+				//re := "re-"
 				var oldDialerName string
 				if bakOldBestDialer == nil {
 					// Not alive -> alive
 					a.mu.Unlock()
 					a.aliveChangeCallback(true)
 					a.mu.Lock()
-					re = ""
+					//re = ""
 					oldDialerName = "<nil>"
 				} else {
 					oldDialerName = bakOldBestDialer.property.Name
@@ -452,7 +452,7 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 						delta := newBestLatency + newBestOffset - bakOldMinSortingLatency
 						fields["latency_delta_ms"] = delta.Milliseconds()
 					}
-					a.log.WithFields(fields).Infof("Group %vselects dialer", re)
+					//a.log.WithFields(fields).Infof("Group %vselects dialer", re)
 				}
 
 				// Lock order / critical-section discipline: the snapshot is
@@ -461,11 +461,11 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 				// below. Holding a.mu across the render would serialize every
 				// other latency update behind a full-list sort and a log
 				// write (the caller may hold the group's publish lock too).
-				if snap, ok := a.snapshotLatenciesLocked(); ok {
+				/*if snap, ok := a.snapshotLatenciesLocked(); ok {
 					a.mu.Unlock()
 					a.printLatenciesOutOfLock(snap)
 					a.mu.Lock()
-				}
+				}*/
 			} else {
 				// Alive -> not alive
 				a.mu.Unlock()
@@ -502,13 +502,13 @@ func (a *AliveDialerSet) NotifyLatencyChange(dialer *Dialer, alive bool) {
 			a.aliveChangeCallback(true)
 			a.mu.Lock()
 		}
-		if a.log.IsLevelEnabled(logrus.InfoLevel) {
+		/*if a.log.IsLevelEnabled(logrus.InfoLevel) {
 			a.log.WithFields(logrus.Fields{
 				"group":   a.dialerGroupName,
 				"network": a.CheckTyp.String(),
 				"dialer":  dialer.property.Name,
 			}).Infof("Group selects dialer")
-		}
+		}*/
 	}
 }
 

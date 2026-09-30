@@ -33,6 +33,9 @@ type Dns struct {
 }
 
 type NewOption struct {
+	// Reuse only within one generation with the same request config and
+	// upstream ordering. Nil compiles a fresh request matcher.
+	CompiledRequestRouting  *CompiledRequestRouting
 	Logger                  *logrus.Logger
 	LocationFinder          *assets.LocationFinder
 	UpstreamReadyCallback   func(dnsUpstream *Upstream) (err error)
@@ -85,13 +88,20 @@ func New(dns *config.Dns, opt *NewOption) (s *Dns, err error) {
 		upstreamName2Id[tag] = uint8(len(s.upstream))
 		s.upstream = append(s.upstream, r)
 	}
-	requestProgram, err := NewNormalizedRequestRoutingProgram(dns.Routing.Request.Rules, dns.Routing.Request.Fallback,
-		&routing.DatReaderOptimizer{Logger: opt.Logger, LocationFinder: opt.LocationFinder},
-		&routing.MergeAndSortRulesOptimizer{},
-		&routing.DeduplicateParamsOptimizer{},
-	)
-	if err != nil {
-		return nil, err
+	requestRouting := opt.CompiledRequestRouting
+	if requestRouting == nil {
+		requestProgram, err := NewNormalizedRequestRoutingProgram(dns.Routing.Request.Rules, dns.Routing.Request.Fallback,
+			&routing.DatReaderOptimizer{Logger: opt.Logger, LocationFinder: opt.LocationFinder},
+			&routing.MergeAndSortRulesOptimizer{},
+			&routing.DeduplicateParamsOptimizer{},
+		)
+		if err != nil {
+			return nil, err
+		}
+		requestRouting, err = CompileRequestRouting(opt.Logger, requestProgram, upstreamName2Id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build DNS request routing: %w", err)
+		}
 	}
 
 	responseProgram, err := routing.NewNormalizedProgram(dns.Routing.Response.Rules, dns.Routing.Response.Fallback,
@@ -102,15 +112,7 @@ func New(dns *config.Dns, opt *NewOption) (s *Dns, err error) {
 	if err != nil {
 		return nil, err
 	}
-	// Parse request routing.
-	reqMatcherBuilder, err := NewRequestMatcherBuilderFromProgram(opt.Logger, requestProgram, upstreamName2Id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build DNS request routing: %w", err)
-	}
-	s.reqMatcher, err = reqMatcherBuilder.Build()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build DNS request routing: %w", err)
-	}
+	s.reqMatcher = requestRouting.Matcher
 	// Parse response routing.
 	respMatcherBuilder, err := NewResponseMatcherBuilderFromProgram(opt.Logger, responseProgram, upstreamName2Id)
 	if err != nil {

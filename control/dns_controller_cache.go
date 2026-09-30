@@ -1260,8 +1260,7 @@ func (c *DnsController) updateDnsCache(msg *dnsmessage.Msg, responseCacheKey str
 	// Update DnsCache.
 	if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		c.log.WithFields(logrus.Fields{
-			"_qname": q.Name,
-			"rcode":  msg.Rcode,
+			"_qname": strings.TrimSuffix(q.Name, ".") + "(" + QtypeToString(q.Qtype) + ")",
 			"ans":    FormatDnsRsc(msg.Answer),
 		}).Tracef("Update DNS record cache")
 	}

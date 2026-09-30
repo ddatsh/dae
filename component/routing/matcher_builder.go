@@ -7,10 +7,11 @@ package routing
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/pkg/config_parser"
 	"github.com/sirupsen/logrus"
-	"strconv"
 )
 
 type DomainSet struct {
@@ -43,7 +44,11 @@ func (b *RulesBuilder) RegisterFunctionParser(funcName string, parser FunctionPa
 
 func (b *RulesBuilder) Apply(rules []*config_parser.RoutingRule) (err error) {
 	for _, rule := range rules {
-		b.log.Debugln("[rule]", rule.String(true, false, false))
+		/*
+			if b.log.IsLevelEnabled(logrus.DebugLevel) {
+				b.log.Debugln("[rule]", rule.String(true, false, false))
+			}
+		*/
 		outbound, err := ParseOutbound(&rule.Outbound)
 		if err != nil {
 			return err
@@ -74,11 +79,13 @@ func (b *RulesBuilder) Apply(rules []*config_parser.RoutingRule) (err error) {
 
 				{
 					// Debug
-					symNot := ""
-					if f.Not {
-						symNot = "!"
-					}
-					b.log.Debugf("\t%v%v(%v) -> %v", symNot, f.Name, key, overrideOutbound.Name)
+					/*
+						symNot := ""
+						if f.Not {
+							symNot = "!"
+						}
+						b.log.Debugf("\t%v%v(%v) -> %v", symNot, f.Name, key, overrideOutbound.Name)
+					*/
 				}
 
 				if err = functionParser(b.log, f, key, paramValueGroup, overrideOutbound); err != nil {
@@ -92,12 +99,46 @@ func (b *RulesBuilder) Apply(rules []*config_parser.RoutingRule) (err error) {
 
 func groupParamValuesByKey(params []*config_parser.Param) (keyToValues map[string][]string, keyOrder []string) {
 	groups := make(map[string][]string)
+
+	if len(params) == 0 {
+		return groups, nil
+	}
+
+	// Most expanded domain rules have only one key. Avoid map lookups per
+	// value in that case, while retaining first-seen order for mixed rules.
+	key := params[0].Key
+	singleKey := true
+	for _, param := range params[1:] {
+		if param.Key != key {
+			singleKey = false
+			break
+		}
+	}
+	if singleKey {
+		values := make([]string, len(params))
+		for i, param := range params {
+			values[i] = param.Val
+		}
+		groups[key] = values
+		return groups, []string{key}
+	}
+
+	// Expanded geosite rules can contain hundreds of thousands of values.
+	// Count first to avoid copying pointer-bearing strings during slice growth.
+	counts := make(map[string]int)
 	for _, param := range params {
-		if _, ok := groups[param.Key]; !ok {
+		if _, ok := counts[param.Key]; !ok {
 			keyOrder = append(keyOrder, param.Key)
 		}
+		counts[param.Key]++
+	}
+	for _, k := range keyOrder {
+		groups[k] = make([]string, 0, counts[k])
+	}
+	for _, param := range params {
 		groups[param.Key] = append(groups[param.Key], param.Val)
 	}
+
 	return groups, keyOrder
 }
 
