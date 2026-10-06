@@ -16,12 +16,11 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"structs"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"structs"
 
 	"github.com/cilium/ebpf"
 	"github.com/daeuniverse/dae/common"
@@ -168,9 +167,9 @@ func (c *ControlPlane) tryOffloadTCPRelay(ctx context.Context, left, right netpr
 	}
 	defer func() { _ = session.Close() }()
 
-	if c.log != nil && c.log.IsLevelEnabled(logrus.DebugLevel) {
+	/*if c.log != nil && c.log.IsLevelEnabled(logrus.DebugLevel) {
 		c.log.Debugf("TCP relay eBPF offload: %v <-> %v", session.left.RemoteAddr(), session.right.RemoteAddr())
-	}
+	}*/
 
 	leftRx, rightRx, err := session.Run(ctx)
 	if leftRx > 0 {

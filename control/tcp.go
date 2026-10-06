@@ -14,6 +14,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,7 +46,7 @@ func logOffloadSkipRateLimited(l *logrus.Logger, reason string) {
 		return
 	}
 	offloadSkipLogAt[reason] = now
-	l.Debugf("Skip TCP relay eBPF offload: %s", reason)
+	//l.Debugf("Skip TCP relay eBPF offload: %s", reason)
 }
 
 const (
@@ -61,22 +62,35 @@ const (
 )
 
 func buildTCPLinkLogFields(res *proxyDialResult, dialParam *proxyDialParam, dst netip.AddrPort, domain string, annotateOffload bool, offloaded bool, offloadReason string) logrus.Fields {
+	rapt := RefineAddrPortToShow(dst)
+	pname := ProcessName2String(dialParam.ProcessName[:])
 	fields := logrus.Fields{
-		"network":  res.OrigNetworkType,
-		"outbound": res.Outbound.Name,
-		"policy":   res.Outbound.GetSelectionPolicy(),
-		"dialer":   res.Dialer.Property().Name,
-		"sniffed":  domain,
-		"ip":       RefineAddrPortToShow(dst),
-		"dscp":     dialParam.Dscp,
-		"pname":    ProcessName2String(dialParam.ProcessName[:]),
-		"mac":      Mac2String(dialParam.Mac[:]),
+		"network": res.OrigNetworkType,
+		"dialer":  res.Dialer.Property().Name,
+	}
+
+	if !res.IsDialIp {
+		fields["ip"] = rapt
+	}
+
+	if dialParam.Dscp != 0 {
+		fields["dscp"] = dialParam.Dscp
+	}
+
+	if pname != "" {
+		fields["pname"] = pname
+	}
+
+	//fields["mac"] =Mac2String(dialParam.Mac[:])
+	if domain != "" {
+		if !strings.HasPrefix(res.DialTarget, domain) {
+			fields["sniffed"] = domain
+		}
 	}
 	if !annotateOffload {
 		return fields
 	}
 	fields["ebpf_offload"] = offloaded
-	// Only output reason field if not globally disabled
 	if !offloaded && offloadReason != "" && !isOffloadGloballyDisabledReason(offloadReason) {
 		fields["ebpf_offload_reason"] = offloadReason
 	}
@@ -317,9 +331,17 @@ func (c *ControlPlane) handleConnWithRoutingResultOwned(
 
 	// Per-flow routing traces are Debug: at Info they dominate CPU/allocs
 	// under high connection rates. Raise log_level to debug to restore them.
+	//dialTarget := res.DialTarget
+	//if cache.NotExists("tcp" + dialTarget) {
 	if c.log.IsLevelEnabled(logrus.DebugLevel) {
-		c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Debugf("%v <-> %v", RefineSourceToShow(src, dst.Addr()), res.DialTarget)
+		rst := RefineSourceToShow(src, dst.Addr())
+		if rst[0] == '[' {
+			c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Debugf(" \b%v <-> %v", rst, res.DialTarget)
+		} else {
+			c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Debugf("%v <-> %v", rst, res.DialTarget)
+		}
 	}
+	//}
 
 	if offloaded {
 		return nil
@@ -352,12 +374,12 @@ func relayEstablishedTCPFlow(
 		return fmt.Errorf("handleTCP relay error: %w", err)
 	}
 
-	if log != nil && log.IsLevelEnabled(logrus.DebugLevel) {
+	/*	if log != nil && log.IsLevelEnabled(logrus.DebugLevel) {
 		log.WithFields(logrus.Fields{
 			"src": src.String(),
 			"dst": dst.String(),
 		}).Debug("TCP relay completed")
-	}
+	}*/
 
 	return nil
 }

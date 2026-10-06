@@ -271,7 +271,7 @@ func (ue *UdpEndpoint) logEndpointExit(err error, msg string) {
 	}
 	entry := ue.log.WithFields(fields).WithError(err)
 	if err == nil || errors.IsUDPEndpointNormalClose(err) {
-		entry.Debugln("UdpEndpoint " + msg + " closed normally")
+		//entry.Debugln("UdpEndpoint " + msg + " closed normally")
 	} else {
 		if opErr, ok := err.(*net.OpError); ok {
 			fields["op"] = opErr.Op

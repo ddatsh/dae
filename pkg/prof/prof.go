@@ -1,12 +1,15 @@
 package prof
 
 import (
-    "os"
-    "runtime/pprof"
+	"os"
+	"runtime/pprof"
+	"time"
 )
 
 var f *os.File
 var count = 0
+
+var StartTime = time.Now()
 
 func Start() {
 	var err error

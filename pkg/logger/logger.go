@@ -19,10 +19,11 @@ func SetLogger(log *logrus.Logger, logLevel string, disableTimestamp bool, logFi
 
 	log.SetLevel(level)
 	log.SetFormatter(&prefixed.TextFormatter{
+		ForceColors:   true,
 		DisableTimestamp: disableTimestamp,
 		FullTimestamp:    true,
 		ForceFormatting:  true,
-		TimestampFormat:  "2006-01-02 15:04:05",
+		TimestampFormat:  "15:04:05",
 	})
 	if logFileOpt != nil {
 		log.SetOutput(logFileOpt)

@@ -55,6 +55,7 @@ type Router struct {
 	upstreams             map[string]*componentdns.UpstreamResolver
 	upstreamByIndex       []*componentdns.UpstreamResolver
 	requestMatcher        *componentdns.RequestMatcher
+	requestRouting        *componentdns.CompiledRequestRouting
 	subMatcher            *compiledMatcher[subscriptionMeta]
 	nodeMatcher           *compiledMatcher[NodeMeta]
 	subNodeMatcher        *compiledMatcher[NodeMeta]
@@ -91,6 +92,7 @@ type lookupCall struct {
 }
 
 type NewOption struct {
+	CompiledRequestRouting *componentdns.CompiledRequestRouting
 	LocationFinder *assets.LocationFinder
 	DirectDialer   netproxy.Dialer
 }
@@ -138,19 +140,34 @@ func NewWithOption(log *logrus.Logger, global *config.Global, dnsCfg *config.Dns
 			directDialer = opt.DirectDialer
 		}
 	}
-	requestProgram, err := componentdns.NewNormalizedRequestRoutingProgram(dnsCfg.Routing.Request.Rules, dnsCfg.Routing.Request.Fallback,
-		&routing.DatReaderOptimizer{Logger: log, LocationFinder: locationFinder},
-		&routing.MergeAndSortRulesOptimizer{},
-		&routing.DeduplicateParamsOptimizer{},
-	)
-	if err != nil {
-		return nil, err
+	var requestRouting *componentdns.CompiledRequestRouting
+	if opt != nil {
+		requestRouting = opt.CompiledRequestRouting
 	}
-	if len(requestProgram.Rules) == 0 &&
-		len(requestProgram.SubscriptionRules) == 0 &&
-		len(requestProgram.NodeRules) == 0 &&
-		len(requestProgram.SubNodeRules) == 0 {
-		return nil, nil
+	var requestProgram *componentdns.NormalizedRequestRoutingProgram
+	var err error
+	if requestRouting != nil {
+		if !requestRouting.HasDNSRules &&
+			len(requestRouting.SubscriptionRules) == 0 &&
+			len(requestRouting.NodeRules) == 0 &&
+			len(requestRouting.SubNodeRules) == 0 {
+			return nil, nil
+		}
+	} else {
+		requestProgram, err = componentdns.NewNormalizedRequestRoutingProgram(dnsCfg.Routing.Request.Rules, dnsCfg.Routing.Request.Fallback,
+			&routing.DatReaderOptimizer{Logger: log, LocationFinder: locationFinder},
+			&routing.MergeAndSortRulesOptimizer{},
+			&routing.DeduplicateParamsOptimizer{},
+		)
+		if err != nil {
+			return nil, err
+		}
+		if len(requestProgram.Rules) == 0 &&
+			len(requestProgram.SubscriptionRules) == 0 &&
+			len(requestProgram.NodeRules) == 0 &&
+			len(requestProgram.SubNodeRules) == 0 {
+			return nil, nil
+		}
 	}
 
 	router := &Router{
@@ -178,28 +195,38 @@ func NewWithOption(log *logrus.Logger, global *config.Global, dnsCfg *config.Dns
 		}
 		upstreamName2Id[tag] = uint8(i)
 	}
-	requestMatcherBuilder, err := componentdns.NewRequestMatcherBuilderFromProgram(log, requestProgram, upstreamName2Id)
-	if err != nil {
-		return nil, err
+	if requestRouting == nil {
+		requestRouting, err = componentdns.CompileRequestRouting(log, requestProgram, upstreamName2Id)
+		if err != nil {
+			return nil, err
+		}
 	}
-	router.requestMatcher, err = requestMatcherBuilder.Build()
-	if err != nil {
-		return nil, err
-	}
+	router.requestRouting = requestRouting
+	router.requestMatcher = requestRouting.Matcher
 
-	router.subMatcher, err = router.compileSubscriptionMatcher(requestProgram.SubscriptionRules)
+	router.subMatcher, err = router.compileSubscriptionMatcher(requestRouting.SubscriptionRules)
 	if err != nil {
 		return nil, err
 	}
-	router.nodeMatcher, err = router.compileNodeMatcher(requestProgram.NodeRules)
+	router.nodeMatcher, err = router.compileNodeMatcher(requestRouting.NodeRules)
 	if err != nil {
 		return nil, err
 	}
-	router.subNodeMatcher, err = router.compileSubNodeMatcher(requestProgram.SubNodeRules)
+	router.subNodeMatcher, err = router.compileSubNodeMatcher(requestRouting.SubNodeRules)
 	if err != nil {
 		return nil, err
 	}
 	return router, nil
+}
+
+// RequestRouting returns the compiled, connection-independent request routing
+// for reuse by consumers of the same config and upstream ordering. It remains
+// usable after this router is closed and must not be reused across reloads.
+func (r *Router) RequestRouting() *componentdns.CompiledRequestRouting {
+	if r == nil {
+		return nil
+	}
+	return r.requestRouting
 }
 
 func (r *Router) Close() error {
@@ -220,6 +247,15 @@ func (r *Router) Close() error {
 		generation.Close()
 	}
 	return nil
+}
+
+// RequestMatcher returns the matcher compiled for the DNS request rules.
+// The control plane can reuse it while this router is alive.
+func (r *Router) RequestMatcher() *componentdns.RequestMatcher {
+	if r == nil {
+		return nil
+	}
+	return r.requestMatcher
 }
 
 func httpClientCacheKey(upstream *componentdns.Upstream, target netip.AddrPort, http3Mode bool) string {
@@ -631,14 +667,40 @@ func matchAnyRegexp(regexps []*regexp2.Regexp, value string) bool {
 
 func groupParamValuesByKey(params []*config_parser.Param) (map[string][]string, []string, error) {
 	grouped := make(map[string][]string)
-	var keyOrder []string
+	if len(params) == 0 {
+		return grouped, nil, nil
+	}
+
+	// Count first (also validates AndFunctions), so we can preallocate and
+	// avoid slice growth when copying pointer-bearing strings.
+	counts := make(map[string]int, len(params))
+	keyOrder := make([]string, 0, len(params))
 	for _, param := range params {
 		if len(param.AndFunctions) > 0 {
 			return nil, nil, fmt.Errorf("nested functions are not supported in internal dae DNS selectors")
 		}
-		if _, ok := grouped[param.Key]; !ok {
+		if _, ok := counts[param.Key]; !ok {
 			keyOrder = append(keyOrder, param.Key)
 		}
+		counts[param.Key]++
+	}
+
+	// Most expanded domain rules have only one key: fill directly, no map lookup.
+	if len(keyOrder) == 1 {
+		key := keyOrder[0]
+		values := make([]string, len(params))
+		for i, param := range params {
+			values[i] = param.Val
+		}
+		grouped[key] = values
+		return grouped, keyOrder, nil
+	}
+
+	// Multi-key: preallocate each group to its exact size, then fill.
+	for _, k := range keyOrder {
+		grouped[k] = make([]string, 0, counts[k])
+	}
+	for _, param := range params {
 		grouped[param.Key] = append(grouped[param.Key], param.Val)
 	}
 	return grouped, keyOrder, nil

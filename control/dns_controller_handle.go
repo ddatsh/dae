@@ -19,6 +19,7 @@ import (
 	"github.com/daeuniverse/dae/common/netutils"
 	"github.com/daeuniverse/dae/component/dns"
 	"github.com/daeuniverse/dae/component/outbound/dialer"
+	"github.com/daeuniverse/dae/pkg/cache"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -57,11 +58,11 @@ func (c *DnsController) forwardWithFallback(
 	upstream *dns.Upstream,
 	primaryDialArg *dialArgument,
 	data []byte,
-	// isAsIs marks the transparent destination synthesized by
-	// resolveDNSUpstream, which has no configured scheme of its own. It is
-	// passed explicitly instead of being inferred from the "udp" scheme that
-	// synthesis happens to write, so the two cases can never be confused when
-	// the synthesized scheme changes.
+// isAsIs marks the transparent destination synthesized by
+// resolveDNSUpstream, which has no configured scheme of its own. It is
+// passed explicitly instead of being inferred from the "udp" scheme that
+// synthesis happens to write, so the two cases can never be confused when
+// the synthesized scheme changes.
 	isAsIs bool,
 ) (respMsg *dnsmessage.Msg, usedDialArg *dialArgument, err error) {
 	// Per-attempt timeout: each attempt gets the full DefaultDialTimeout budget.
@@ -493,21 +494,20 @@ func (c *DnsController) serveFromRespCacheWithRefresh_(dnsMessage *dnsmessage.Ms
 	if err := c.writeCachedResponse(resp, dnsMessage.Id, req, responseWriter, dnsMessage); err != nil {
 		return true, err
 	}
+
 	if c.log.IsLevelEnabled(logrus.DebugLevel) && len(dnsMessage.Question) > 0 {
 		q := dnsMessage.Question[0]
 		l := c.log.WithFields(logrus.Fields{
-			"_qname": strings.ToLower(q.Name),
-			"qtype":  QtypeToString(q.Qtype),
+			"question": strings.TrimSuffix(q.Name, ".") + "(" + QtypeToString(q.Qtype) + ")",
 		})
 		if req != nil {
 			l = l.WithFields(logrus.Fields{
-				"network": "udp(dns)",
-				"source":  RefineSourceToShow(req.realSrc, req.realDst.Addr()),
-				"dest":    RefineAddrPortToShow(req.realDst),
+				"source": RefineSourceToShow(req.realSrc, req.realDst.Addr()),
 			})
 		}
 		l.Debug("cache hit")
 	}
+
 	return true, nil
 }
 
@@ -564,7 +564,7 @@ func (c *DnsController) handleWithResponseWriter_(
 			upstreamName = upstream.String()
 		}
 		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
+			"question": dnsMessage.Question[0].Name + "(" + QtypeToString(dnsMessage.Question[0].Qtype) + ")",
 			"upstream": upstreamName,
 		}).Traceln("Request to DNS upstream")
 	}
@@ -675,13 +675,19 @@ func (c *DnsController) resolveDNSUpstream(
 	}
 	switch upstreamIndex {
 	case consts.DnsResponseOutboundIndex_Accept:
+		qname := respMsg.Question[0].Name
+		qType := QtypeToString(respMsg.Question[0].Qtype)
+		//if cache.NotExists("accept" + qname + qType) {
 		// Accept.
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
-				"question": respMsg.Question,
+				//"question": respMsg.Question,
+				"question": strings.TrimSuffix(qname, ".") + "(" + qType + ")",
+				"src":      cache.Name(req.realSrc.Addr().String()),
 				"upstream": upstreamName,
 			}).Traceln("Accept")
 		}
+		//}
 	case consts.DnsResponseOutboundIndex_Reject:
 		// Reject the request with empty answer.
 		respMsg.Answer = nil
@@ -695,7 +701,8 @@ func (c *DnsController) resolveDNSUpstream(
 	default:
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
-				"question":      respMsg.Question,
+				//"question":      respMsg.Question,
+				"question":      respMsg.Question[0].Name + "(" + QtypeToString(respMsg.Question[0].Qtype) + ")",
 				"last_upstream": upstreamName,
 				"next_upstream": nextUpstream.String(),
 			}).Traceln("Change DNS upstream and resend")

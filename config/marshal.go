@@ -258,13 +258,13 @@ func (m *Marshaller) marshalParam(from reflect.Value, depth int) (err error) {
 				continue
 			case "Rules":
 				// Expand.
-				rules, ok := field.Interface().([]*config_parser.RoutingRule)
+				_, ok := field.Interface().([]*config_parser.RoutingRule)
 				if !ok {
 					return fmt.Errorf("unexpected Rules type: %v", field.Type())
 				}
-				for _, r := range rules {
+				/*for _, r := range rules {
 					m.writeLine(depth, r.String(false, true, true))
-				}
+				}*/
 			default:
 				return fmt.Errorf("unknown reserved field: %v", structField.Name)
 			}

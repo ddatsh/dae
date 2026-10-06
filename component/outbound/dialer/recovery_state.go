@@ -114,11 +114,11 @@ func (m *dialerRecoveryManager) init(checkInterval time.Duration) {
 		state.maxBackoff = maxBackoff
 		state.Unlock()
 	}
-	m.owner.Log.WithFields(logrus.Fields{
+	/*m.owner.Log.WithFields(logrus.Fields{
 		"dialer":         m.owner.Property().Name,
 		"check_interval": checkInterval.String(),
 		"max_backoff":    maxBackoff.String(),
-	}).Debugln("Recovery detection initialized")
+	}).Debugln("Recovery detection initialized")*/
 }
 
 func (m *dialerRecoveryManager) trigger(target *NetworkType) {
@@ -243,12 +243,12 @@ func (m *dialerRecoveryManager) confirm(networkType *NetworkType, confirmSequenc
 		if state.backoffLevel > 0 {
 			state.backoffLevel--
 		}
-		m.owner.Log.WithFields(logrus.Fields{
+		/*m.owner.Log.WithFields(logrus.Fields{
 			"dialer":        m.owner.Property().Name,
 			"proto":         networkType.L4Proto,
 			"network":       networkType.String(),
 			"backoff_level": state.backoffLevel,
-		}).Infoln("Recovery confirmed after exponential backoff: penalty decreased")
+		}).Infoln("Recovery confirmed after exponential backoff: penalty decreased")*/
 	} else {
 		m.owner.Log.WithFields(logrus.Fields{
 			"dialer":        m.owner.Property().Name,

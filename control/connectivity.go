@@ -90,7 +90,7 @@ func (c *controlPlaneCore) writeOutboundConnectivityLocked(outbound uint8, alive
 	if bpf == nil || bpf.OutboundConnectivityMap == nil {
 		return
 	}
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
+	/*if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		strAlive := "NOT ALIVE"
 		if alive {
 			strAlive = "ALIVE"
@@ -98,7 +98,7 @@ func (c *controlPlaneCore) writeOutboundConnectivityLocked(outbound uint8, alive
 		c.log.WithFields(logrus.Fields{
 			"outboundId": outbound,
 		}).Tracef("Outbound <%v> %v -> %v, notify the kernel program.", c.outboundId2Name[outbound], networkType.StringWithoutDns(), strAlive)
-	}
+	}*/
 
 	value := uint32(0)
 	if alive {

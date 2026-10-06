@@ -213,7 +213,7 @@ func (r *bpfMaintenanceRuntime) run() {
 		}
 
 		if lastHealthCheck.IsZero() || now.Sub(lastHealthCheck) >= 5*time.Second {
-			c.checkBpfMapHealth(udpOverflow, tcpOverflow)
+			//c.checkBpfMapHealth(udpOverflow, tcpOverflow)
 			lastHealthCheck = now
 		}
 
@@ -495,6 +495,7 @@ func (c *ControlPlane) cleanupConnStateMapBeforeLocked(aggressiveCleanup bool, s
 	}
 	tcpStats.deleted = len(tcpKeysToDelete)
 
+	/*
 	if len(udpKeysToDelete) > 0 {
 		if aggressiveCleanup {
 			c.log.Debugf("cleanupConnStateMap: aggressive cleanup removed %d UDP entries (%d%% usage)",
@@ -511,6 +512,7 @@ func (c *ControlPlane) cleanupConnStateMapBeforeLocked(aggressiveCleanup bool, s
 			c.log.Debugf("cleanupConnStateMap: removed %d expired TCP entries", len(tcpKeysToDelete))
 		}
 	}
+	*/
 
 	return udpStats, tcpStats
 }

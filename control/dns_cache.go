@@ -19,7 +19,7 @@ import (
 // This balances between performance (avoiding frequent repack) and TTL accuracy.
 // NOTE: Increased from 5 to 15 to reduce memory allocation frequency under high load
 // while maintaining acceptable TTL accuracy (15s variance is negligible for DNS caching).
-const ttlRefreshThresholdSeconds = 15
+const ttlRefreshThresholdSeconds = 60
 
 // BPF update configuration
 const (

@@ -1089,6 +1089,7 @@ const dnsNegativeCacheMaxTtl = 3600
 // when any contained RR expires), so this bounds the entry deadline instead of
 // trusting the first answer record.
 func minRealRecordTtl(msg *dnsmessage.Msg) uint32 {
+	const minCacheTtl = 300
 	var minTtl uint32
 	first := true
 	consider := func(rrs []dnsmessage.RR) {
@@ -1109,6 +1110,10 @@ func minRealRecordTtl(msg *dnsmessage.Msg) uint32 {
 	if first {
 		return 0
 	}
+	if minTtl < minCacheTtl {
+		return minCacheTtl
+	}
+
 	return minTtl
 }
 
@@ -1260,8 +1265,7 @@ func (c *DnsController) updateDnsCache(msg *dnsmessage.Msg, responseCacheKey str
 	// Update DnsCache.
 	if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		c.log.WithFields(logrus.Fields{
-			"_qname": q.Name,
-			"rcode":  msg.Rcode,
+			"_qname": strings.TrimSuffix(q.Name, ".") + "(" + QtypeToString(q.Qtype) + ")",
 			"ans":    FormatDnsRsc(msg.Answer),
 		}).Tracef("Update DNS record cache")
 	}

@@ -384,7 +384,7 @@ func (n *AhocorasickSlimtrie) Build() (err error) {
 				defer func() { <-sem }()
 				defer innerWg.Done()
 				transformed := ToSuffixTrieStrings(patterns)
-				t, err := trie.NewTrie(transformed, ValidDomainChars)
+				t, err := trie.NewTrieInPlace(transformed, ValidDomainChars)
 				if err != nil {
 					mu.Lock()
 					if buildErr == nil {
