@@ -8,12 +8,14 @@
 package geodata
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"unsafe"
 
 	"google.golang.org/protobuf/encoding/protowire"
 )
@@ -126,4 +128,191 @@ func Decode(filename, code string) ([]byte, error) {
 		return nil, err
 	}
 	return geoBytes, nil
+}
+
+// LiteDomain is a heap-cheap view of one GeoSite domain entry, produced by
+// direct wire-format parsing without allocating the protobuf message and
+// attribute object tree.
+type LiteDomain struct {
+	Type  Domain_Type
+	Value string
+}
+
+// AppendGeoSiteEntryDomains walks one serialized GeoSite entry and appends
+// its domains to dst. attr, when non-empty, keeps only domains carrying an
+// attribute whose key equals attr (case-insensitively), matching the
+// code@attr semantics applied on top of proto.Unmarshal.
+//
+// The GeoSite layout is:
+//
+//	1: country_code (string)
+//	2: domain        (repeated Domain message)
+//
+// Domain is:
+//
+//	1: type      (varint)
+//	2: value     (string)
+//	3: attribute (repeated Domain_Attribute message; key is field 1)
+//
+// Any other field is skipped, so forward-compatible files still parse.
+//
+// The returned LiteDomain values share entry's backing byte array (their
+// Value strings are zero-copy views into it), so callers must not mutate
+// entry for as long as the results are reachable. entry is a freshly read
+// decode buffer that is never written to or exposed, so this is safe and
+// keeps its bytes alive through the string headers.
+func AppendGeoSiteEntryDomains(dst []LiteDomain, entry []byte, attr string) ([]LiteDomain, error) {
+	if cap(dst)-len(dst) == 0 {
+		// Reserve exact capacity with one allocation. Appending into a nil
+		// slice one domain at a time grows it ~log2(N) times: every growth
+		// re-copies the existing LiteDomain values (each carries a string
+		// pointer) under GC write barriers, which dominated this decode in
+		// CPU profiles (runtime.growslice).
+		if count, ok := countGeoSiteEntryDomains(entry); ok && count > 0 {
+			grown := make([]LiteDomain, len(dst), len(dst)+count)
+			copy(grown, dst)
+			dst = grown
+		}
+	}
+	var attrBytes []byte
+	if attr != "" {
+		attrBytes = []byte(attr)
+	}
+	for len(entry) > 0 {
+		fieldNum, wireType, n := protowire.ConsumeTag(entry)
+		if n < 0 {
+			return nil, protowire.ParseError(n)
+		}
+		entry = entry[n:]
+		if fieldNum == 2 && wireType == protowire.BytesType {
+			domain, m := protowire.ConsumeBytes(entry)
+			if m < 0 {
+				return nil, protowire.ParseError(m)
+			}
+			entry = entry[m:]
+			dst = appendLiteDomain(dst, domain, attrBytes)
+			continue
+		}
+		m := protowire.ConsumeFieldValue(fieldNum, wireType, entry)
+		if m < 0 {
+			return nil, protowire.ParseError(m)
+		}
+		entry = entry[m:]
+	}
+	return dst, nil
+}
+
+// countGeoSiteEntryDomains counts top-level field-2 (Domain) messages in a
+// serialized GeoSite entry without descending into them. A failed scan
+// returns ok=false so the caller can fall back to plain append growth (the
+// second, strict pass then surfaces the parse error).
+func countGeoSiteEntryDomains(entry []byte) (count int, ok bool) {
+	for len(entry) > 0 {
+		fieldNum, wireType, n := protowire.ConsumeTag(entry)
+		if n < 0 {
+			return count, false
+		}
+		entry = entry[n:]
+		if fieldNum == 2 && wireType == protowire.BytesType {
+			count++
+		}
+		m := protowire.ConsumeFieldValue(fieldNum, wireType, entry)
+		if m < 0 {
+			return count, false
+		}
+		entry = entry[m:]
+	}
+	return count, true
+}
+
+func appendLiteDomain(dst []LiteDomain, b []byte, attr []byte) []LiteDomain {
+	var d LiteDomain
+	// attrHit is pre-set when no attribute filter is requested.
+	attrHit := len(attr) == 0
+	for len(b) > 0 {
+		fieldNum, wireType, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			// Malformed domain: stop here and keep what was parsed.
+			return dst
+		}
+		b = b[n:]
+		switch {
+		case fieldNum == 1 && wireType == protowire.VarintType:
+			v, m := protowire.ConsumeVarint(b)
+			if m < 0 {
+				return dst
+			}
+			b = b[m:]
+			d.Type = Domain_Type(int32(v))
+		case fieldNum == 2 && wireType == protowire.BytesType:
+			v, m := protowire.ConsumeBytes(b)
+			if m < 0 {
+				return dst
+			}
+			b = b[m:]
+			// Zero-copy view over the entry buffer: protowire.ConsumeString
+			// would do string(v), one heap allocation and copy per domain.
+			d.Value = bytesString(v)
+		case fieldNum == 3 && wireType == protowire.BytesType:
+			msg, m := protowire.ConsumeBytes(b)
+			if m < 0 {
+				return dst
+			}
+			b = b[m:]
+			if !attrHit && attributeHasKey(msg, attr) {
+				attrHit = true
+			}
+		default:
+			m := protowire.ConsumeFieldValue(fieldNum, wireType, b)
+			if m < 0 {
+				return dst
+			}
+			b = b[m:]
+		}
+	}
+	if attrHit {
+		dst = append(dst, d)
+	}
+	return dst
+}
+
+// bytesString reinterprets b as a string without copying. The caller must
+// guarantee b's backing memory is never mutated afterwards; here it always
+// points into the immutable decode buffer of one GeoSite entry.
+func bytesString(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	return unsafe.String(unsafe.SliceData(b), len(b))
+}
+
+// attributeHasKey reports whether a serialized Domain_Attribute carries key
+// as its field-1 string (case-insensitive). Other attribute fields are
+// skipped. It works on byte slices to avoid allocating a string per
+// attribute.
+func attributeHasKey(b []byte, key []byte) bool {
+	for len(b) > 0 {
+		fieldNum, wireType, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return false
+		}
+		b = b[n:]
+		if fieldNum == 1 && wireType == protowire.BytesType {
+			v, m := protowire.ConsumeBytes(b)
+			if m < 0 {
+				return false
+			}
+			if bytes.EqualFold(v, key) {
+				return true
+			}
+			b = b[m:]
+			continue
+		}
+		m := protowire.ConsumeFieldValue(fieldNum, wireType, b)
+		if m < 0 {
+			return false
+		}
+		b = b[m:]
+	}
+	return false
 }
