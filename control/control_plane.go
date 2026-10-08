@@ -776,18 +776,24 @@ func NewControlPlaneWithContextOptions(
 		log.Debugf("RoutingA:\n%vfallback: %v\n", debugBuilder.String(), routingProgram.Fallback)
 	}*/
 	// Parse rules and build.
+	// Matcher construction (tries, bitlists) allocates heavily as well; keep
+	// GC relaxed for the whole build and restore once it is done.
+	restoreGC := routing.WithRelaxedGC()
 	log.Infoln("Building routing matcher...")
 	builder, err := NewRoutingMatcherBuilderFromProgram(log, routingProgram, outboundName2Id, core.bpf.Load())
 	if err != nil {
+		restoreGC()
 		return nil, fmt.Errorf("NewRoutingMatcherBuilder: %w", err)
 	}
 	kernspaceSnapshot := builder.KernspaceSnapshot()
 	if !buildOpts.DelayDatapathCommit {
 		log.Infoln("Loading routing rules into kernel space (BPF)...")
 		if err = core.buildRoutingKernspaceForSlot(log, kernspaceSnapshot); err != nil {
+			restoreGC()
 			return nil, fmt.Errorf("routing kernspace snapshot: %w", err)
 		}
 		if err = core.StageRoutingEpoch(); err != nil {
+			restoreGC()
 			return nil, fmt.Errorf("stage routing epoch: %w", err)
 		}
 	} else {
@@ -795,6 +801,7 @@ func NewControlPlaneWithContextOptions(
 	}
 	log.Infoln("Building userspace routing matcher...")
 	routingMatcher, err := builder.BuildUserspace()
+	restoreGC()
 	if err != nil {
 		return nil, fmt.Errorf("RoutingMatcherBuilder.BuildUserspace: %w", err)
 	}

@@ -8,6 +8,8 @@ package routing
 import (
 	"fmt"
 	"net/netip"
+	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -32,6 +34,8 @@ func DeepCloneRules(rules []*config_parser.RoutingRule) (newRules []*config_pars
 }
 
 func ApplyRulesOptimizers(rules []*config_parser.RoutingRule, optimizers ...RulesOptimizer) ([]*config_parser.RoutingRule, error) {
+	restoreGC := WithRelaxedGC()
+	defer restoreGC()
 	rules = DeepCloneRules(rules)
 	var err error
 	for _, opt := range optimizers {
@@ -40,6 +44,48 @@ func ApplyRulesOptimizers(rules []*config_parser.RoutingRule, optimizers ...Rule
 		}
 	}
 	return rules, err
+}
+
+// heavyBuildGCPercent temporarily lowers GC frequency while geosite/geoip
+// data sets are expanded and routing matchers are built. Those phases
+// allocate tens of millions of pointers; with the default GOGC (100) the
+// concurrent marker runs almost continuously and write-barrier flushing plus
+// goroutine suspension dominate CPU. 400 cuts GC frequency by ~4x while still
+// bounding heap growth; GOMEMLIMIT (set from the cgroup ceiling elsewhere)
+// stays in force as a hard safety net.
+const heavyBuildGCPercent = 400
+
+var (
+	gcRelaxMu    sync.Mutex
+	gcRelaxUsers int
+	gcRelaxOld   int
+)
+
+// WithRelaxedGC runs a section with GC frequency lowered for allocation-heavy
+// routing build phases. Nested and concurrent invocations share one relaxed
+// section; the last release restores the previous GOGC and forces a GC so the
+// temporary build garbage is reclaimed before returning to steady state.
+func WithRelaxedGC() (restore func()) {
+	gcRelaxMu.Lock()
+	if gcRelaxUsers == 0 {
+		gcRelaxOld = debug.SetGCPercent(heavyBuildGCPercent)
+	}
+	gcRelaxUsers++
+	gcRelaxMu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			gcRelaxMu.Lock()
+			gcRelaxUsers--
+			if gcRelaxUsers == 0 {
+				old := gcRelaxOld
+				debug.SetGCPercent(old)
+				runtime.GC()
+			}
+			gcRelaxMu.Unlock()
+		})
+	}
 }
 
 type AliasOptimizer struct {
@@ -167,20 +213,30 @@ type DatReaderOptimizer struct {
 	LocationFinder *assets.LocationFinder
 	Logger         *logrus.Logger
 	mu             sync.Mutex
-	// Cached params are immutable by contract once stored.
-	// cloneParams only copies the slice container while sharing *Param objects.
-	// Downstream optimizers must not mutate Param fields.
+	// Cached slices are shared read-only across cache hits: callers receive
+	// the exact same backing array and must not append to it, reorder it, or
+	// mutate Param fields. Optimize only reads cached slices while building a
+	// freshly allocated merged Params slice for each rule, so downstream
+	// optimizers (MergeAndSort/Deduplicate) never touch this backing array.
 	geoSiteCache map[string][]*config_parser.Param
 	geoIpCache   map[string][]*config_parser.Param
 }
 
-func cloneParams(params []*config_parser.Param) []*config_parser.Param {
-	if len(params) == 0 {
+// sharedParams returns the canonical read-only slice stored in the geo
+// caches. When s carries spare capacity it is compacted once, so an
+// accidental future append onto a cache-hit slice cannot overwrite entries
+// shared with the cache. In the common case (cap == len) it returns s with
+// no allocation.
+func sharedParams(s []*config_parser.Param) []*config_parser.Param {
+	if len(s) == 0 {
 		return nil
 	}
-	out := make([]*config_parser.Param, len(params))
-	copy(out, params)
-	return out
+	if cap(s) == len(s) {
+		return s
+	}
+	frozen := make([]*config_parser.Param, len(s))
+	copy(frozen, s)
+	return frozen
 }
 
 func (o *DatReaderOptimizer) initCacheLocked() {
@@ -202,7 +258,7 @@ func (o *DatReaderOptimizer) loadGeoSite(filename string, code string) (params [
 	o.initCacheLocked()
 	if cached, ok := o.geoSiteCache[cacheKey]; ok {
 		o.mu.Unlock()
-		return cloneParams(cached), nil
+		return cached, nil
 	}
 	o.mu.Unlock()
 
@@ -213,60 +269,52 @@ func (o *DatReaderOptimizer) loadGeoSite(filename string, code string) (params [
 	}
 	//o.Logger.Debugf("Read geosite \"%v:%v\" from %v", filename, code, filePath)
 	code, attr, _ := strings.Cut(code, "@")
-	geoSite, err := geodata.UnmarshalGeoSite(o.Logger, filePath, code)
+	// Direct wire-format decode: avoids building the protobuf object tree,
+	// which was the dominant allocation source for large geosite files.
+	domains, err := geodata.LoadGeoSiteLite(o.Logger, filePath, code, attr)
 	if err != nil {
 		return nil, err
 	}
-	params = make([]*config_parser.Param, 0, len(geoSite.Domain))
-	for _, item := range geoSite.Domain {
-		if attr != "" {
-			// Filter by attr.
-			attrHit := false
-			for _, itemAttr := range item.Attribute {
-				if strings.EqualFold(itemAttr.Key, attr) {
-					attrHit = true
-					break
-				}
-			}
-			if !attrHit {
-				continue
-			}
+	// Back every expanded Param by one allocation instead of one per domain.
+	objs := make([]config_parser.Param, len(domains))
+	params = make([]*config_parser.Param, 0, len(domains))
+	for i := range domains {
+		key, ok := geoDomainRoutingKey(domains[i].Type)
+		if !ok {
+			continue
 		}
-
-		switch item.Type {
-		case geodata.Domain_Full:
-			// Full.
-			params = append(params, &config_parser.Param{
-				Key: string(consts.RoutingDomainKey_Full),
-				Val: item.Value,
-			})
-		case geodata.Domain_RootDomain:
-			// Suffix.
-			params = append(params, &config_parser.Param{
-				Key: string(consts.RoutingDomainKey_Suffix),
-				Val: item.Value,
-			})
-		case geodata.Domain_Plain:
-			// Keyword.
-			params = append(params, &config_parser.Param{
-				Key: string(consts.RoutingDomainKey_Keyword),
-				Val: item.Value,
-			})
-		case geodata.Domain_Regex:
-			// Regex.
-			params = append(params, &config_parser.Param{
-				Key: string(consts.RoutingDomainKey_Regex),
-				Val: item.Value,
-			})
-		}
+		p := &objs[i]
+		p.Key = key
+		p.Val = domains[i].Value
+		params = append(params, p)
 	}
 
+	// Share one read-only backing array between the cache and every hit.
+	params = sharedParams(params)
 	o.mu.Lock()
 	o.initCacheLocked()
-	o.geoSiteCache[cacheKey] = cloneParams(params)
+	o.geoSiteCache[cacheKey] = params
 	o.mu.Unlock()
 
 	return params, nil
+}
+
+// geoDomainRoutingKey maps a geosite Domain_Type to the corresponding routing
+// domain key. Unknown types are dropped, matching the previous switch's
+// default behavior.
+func geoDomainRoutingKey(t geodata.Domain_Type) (string, bool) {
+	switch t {
+	case geodata.Domain_Full:
+		return string(consts.RoutingDomainKey_Full), true
+	case geodata.Domain_RootDomain:
+		return string(consts.RoutingDomainKey_Suffix), true
+	case geodata.Domain_Plain:
+		return string(consts.RoutingDomainKey_Keyword), true
+	case geodata.Domain_Regex:
+		return string(consts.RoutingDomainKey_Regex), true
+	default:
+		return "", false
+	}
 }
 
 func (o *DatReaderOptimizer) loadGeoIp(filename string, code string) (params []*config_parser.Param, err error) {
@@ -279,7 +327,7 @@ func (o *DatReaderOptimizer) loadGeoIp(filename string, code string) (params []*
 	o.initCacheLocked()
 	if cached, ok := o.geoIpCache[cacheKey]; ok {
 		o.mu.Unlock()
-		return cloneParams(cached), nil
+		return cached, nil
 	}
 	o.mu.Unlock()
 
@@ -307,9 +355,11 @@ func (o *DatReaderOptimizer) loadGeoIp(filename string, code string) (params []*
 		})
 	}
 
+	// Share one read-only backing array between the cache and every hit.
+	params = sharedParams(params)
 	o.mu.Lock()
 	o.initCacheLocked()
-	o.geoIpCache[cacheKey] = cloneParams(params)
+	o.geoIpCache[cacheKey] = params
 	o.mu.Unlock()
 
 	return params, nil
@@ -337,13 +387,24 @@ func (o *DatReaderOptimizer) Optimize(rules []*config_parser.RoutingRule) ([]*co
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			// Process this rule's functions
+			// Process this rule's functions.
 			for _, f := range r.AndFunctions {
-				var newParams = make([]*config_parser.Param, 0, len(f.Params))
-				var loadErr error
-				for _, param := range f.Params {
+				// Fast path: no geosite/geoip/ext expansion needed. Leave the
+				// original Params slice untouched and avoid allocating.
+				if !hasExpandableParam(f.Params) {
+					continue
+				}
+				// Expand every param first so the merged slice can be allocated
+				// once at its exact size. Appending hundreds of thousands of
+				// expanded domains into a slice sized for the original param
+				// count used to re-grow (and re-copy every pointer under write
+				// barriers) ~log2(N) times.
+				parts := make([][]*config_parser.Param, len(f.Params))
+				total := 0
+				for i, param := range f.Params {
 					// Parse this param and replace it with more.
 					var params []*config_parser.Param
+					var loadErr error
 					switch param.Key {
 					case "geosite":
 						params, loadErr = o.loadGeoSite("geosite", param.Val)
@@ -367,6 +428,11 @@ func (o *DatReaderOptimizer) Optimize(rules []*config_parser.RoutingRule) ([]*co
 						results <- ruleResult{idx, nil, loadErr}
 						return
 					}
+					parts[i] = params
+					total += len(params)
+				}
+				newParams := make([]*config_parser.Param, 0, total)
+				for _, params := range parts {
 					newParams = append(newParams, params...)
 				}
 				f.Params = newParams
@@ -391,4 +457,16 @@ func (o *DatReaderOptimizer) Optimize(rules []*config_parser.RoutingRule) ([]*co
 	}
 
 	return newRules, nil
+}
+
+// hasExpandableParam reports whether any param requires DatReader expansion
+// (geosite/geoip/ext).
+func hasExpandableParam(params []*config_parser.Param) bool {
+	for _, param := range params {
+		switch param.Key {
+		case "geosite", "geoip", "ext":
+			return true
+		}
+	}
+	return false
 }
