@@ -56,42 +56,32 @@ func UnmarshalGeoIp(log *logrus.Logger, filepath, code string) (*GeoIP, error) {
 	return nil, fmt.Errorf("code %v not found in %v", code, filepath)
 }
 
-func UnmarshalGeoSite(log *logrus.Logger, filepath, code string) (*GeoSite, error) {
+func UnmarshalGeoSite(_ *logrus.Logger, filepath, code string) (*GeoSite, error) {
 	geositeBytes, err := Decode(filepath, code)
-	switch err {
-	case nil:
+	if err == nil {
 		var geosite GeoSite
 		if err := proto.Unmarshal(geositeBytes, &geosite); err != nil {
 			return nil, err
 		}
 		return &geosite, nil
-
-	case errCodeNotFound:
-		return nil, fmt.Errorf("code %v not found in %v", code, filepath)
-
-	case errFailedToReadBytes, errFailedToReadExpectedLenBytes,
-		errInvalidGeodataFile, errInvalidGeodataVarintLength:
-		if fi, statErr := os.Stat(filepath); statErr == nil && fi.Size() > maxGeoEntryLength {
-			return nil, fmt.Errorf("geosite file %v is too large (%d bytes)", filepath, fi.Size())
-		}
-		log.Warnln("failed to decode geosite file: ", filepath, ", fallback to the original ReadFile method")
-		geositeBytes, err = os.ReadFile(filepath)
-		if err != nil {
-			return nil, err
-		}
-		var geositeList GeoSiteList
-		if err := proto.Unmarshal(geositeBytes, &geositeList); err != nil {
-			return nil, err
-		}
-		for _, geosite := range geositeList.GetEntry() {
-			if strings.EqualFold(code, geosite.GetCountryCode()) {
-				return geosite, nil
-			}
-		}
-
-	default:
-		return nil, err
 	}
 
 	return nil, fmt.Errorf("code %v not found in %v", code, filepath)
+
+}
+
+// LoadGeoSiteLite extracts the domains of one GeoSite code without building
+// the protobuf object tree: the matched entry bytes are walked directly. For
+// large geosite files (hundreds of thousands of Domain messages) proto.Unmarshal
+// used to allocate the entire message/attribute graph plus a repeatedly
+// growing domain slice, which was the dominant allocation and GC driver
+// during routing rule build.
+func LoadGeoSiteLite(_ *logrus.Logger, filepath, code, attr string) ([]LiteDomain, error) {
+	entry, err := Decode(filepath, code)
+	if err == nil {
+		return AppendGeoSiteEntryDomains(nil, entry, attr)
+	}
+
+	return nil, fmt.Errorf("code %v not found in %v", code, filepath)
+
 }

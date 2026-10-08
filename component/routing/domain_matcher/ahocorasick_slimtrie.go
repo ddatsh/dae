@@ -92,7 +92,6 @@ func (n *AhocorasickSlimtrie) AddSet(bitIndex int, patterns []string, typ consts
 		n.toBuildAc[bitIndex] = slices.Grow(n.toBuildAc[bitIndex], maxAcEntries)
 	}
 	skippedInThisSet := uint64(0)
-nextPattern:
 	for _, d := range patterns {
 		switch typ {
 		case consts.RoutingDomainKey_Full,
@@ -104,22 +103,8 @@ nextPattern:
 		}
 		switch typ {
 		case consts.RoutingDomainKey_Full:
-			for _, r := range []byte(d) {
-				if !ValidDomainChars.IsValidChar(r) {
-					skippedInThisSet++
-					n.noteSkippedDomain("full", bitIndex, d, r)
-					continue nextPattern
-				}
-			}
 			n.toBuildTrie[bitIndex] = append(n.toBuildTrie[bitIndex], "^"+d+"$")
 		case consts.RoutingDomainKey_Suffix:
-			for _, r := range []byte(d) {
-				if !ValidDomainChars.IsValidChar(r) {
-					skippedInThisSet++
-					n.noteSkippedDomain("suffix", bitIndex, d, r)
-					continue nextPattern
-				}
-			}
 			if strings.HasPrefix(d, ".") {
 				// abc.example.com
 				n.toBuildTrie[bitIndex] = append(n.toBuildTrie[bitIndex], d+"$")
@@ -135,7 +120,12 @@ nextPattern:
 			// Only use ac automaton for "keyword" matching to save memory.
 			n.toBuildAc[bitIndex] = append(n.toBuildAc[bitIndex], []byte(d))
 		case consts.RoutingDomainKey_Regex:
-			r, err := regexp.Compile(d)
+			// Clone detaches the pattern from the geosite decode buffer:
+			// geosite-derived patterns are zero-copy views into the whole raw
+			// entry ([]byte) returned by geodata.Decode, and regexp.Regexp
+			// retains the pattern string for its entire lifetime. Compiling
+			// the view would pin the multi-MB entry buffer per regex entry.
+			r, err := regexp.Compile(strings.Clone(d))
 			if err != nil {
 				n.err = fmt.Errorf("failed to compile regex: %v", d)
 				return
@@ -384,7 +374,7 @@ func (n *AhocorasickSlimtrie) Build() (err error) {
 				defer func() { <-sem }()
 				defer innerWg.Done()
 				transformed := ToSuffixTrieStrings(patterns)
-				t, err := trie.NewTrie(transformed, ValidDomainChars)
+				t, err := trie.NewTrieInPlace(transformed, ValidDomainChars)
 				if err != nil {
 					mu.Lock()
 					if buildErr == nil {
