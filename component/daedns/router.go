@@ -631,14 +631,40 @@ func matchAnyRegexp(regexps []*regexp2.Regexp, value string) bool {
 
 func groupParamValuesByKey(params []*config_parser.Param) (map[string][]string, []string, error) {
 	grouped := make(map[string][]string)
-	var keyOrder []string
+	if len(params) == 0 {
+		return grouped, nil, nil
+	}
+
+	// Count first (also validates AndFunctions), so we can preallocate and
+	// avoid slice growth when copying pointer-bearing strings.
+	counts := make(map[string]int, len(params))
+	keyOrder := make([]string, 0, len(params))
 	for _, param := range params {
 		if len(param.AndFunctions) > 0 {
 			return nil, nil, fmt.Errorf("nested functions are not supported in internal dae DNS selectors")
 		}
-		if _, ok := grouped[param.Key]; !ok {
+		if _, ok := counts[param.Key]; !ok {
 			keyOrder = append(keyOrder, param.Key)
 		}
+		counts[param.Key]++
+	}
+
+	// Most expanded domain rules have only one key: fill directly, no map lookup.
+	if len(keyOrder) == 1 {
+		key := keyOrder[0]
+		values := make([]string, len(params))
+		for i, param := range params {
+			values[i] = param.Val
+		}
+		grouped[key] = values
+		return grouped, keyOrder, nil
+	}
+
+	// Multi-key: preallocate each group to its exact size, then fill.
+	for _, k := range keyOrder {
+		grouped[k] = make([]string, 0, counts[k])
+	}
+	for _, param := range params {
 		grouped[param.Key] = append(grouped[param.Key], param.Val)
 	}
 	return grouped, keyOrder, nil

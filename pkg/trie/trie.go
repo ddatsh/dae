@@ -9,12 +9,10 @@
 package trie
 
 import (
-	"fmt"
 	"math/bits"
 	"net/netip"
-	"sort"
+	"slices"
 
-	"github.com/daeuniverse/dae/common"
 	"github.com/daeuniverse/dae/common/bitlist"
 	"github.com/daeuniverse/outbound/pool"
 )
@@ -153,16 +151,15 @@ func NewTrieFromPrefixes(cidrs []netip.Prefix) (*Trie, error) {
 
 // NewTrie creates a new *Trie struct, from a slice of sorted strings.
 func NewTrie(keys []string, chars *ValidChars) (*Trie, error) {
+	return NewTrieInPlace(slices.Clone(keys), chars)
+}
+
+// NewTrieInPlace builds a trie while sorting and compacting keys in place.
+// Use it only when the caller owns the slice and no longer needs its contents.
+func NewTrieInPlace(keys []string, chars *ValidChars) (*Trie, error) {
 	// Check chars.
-	keys = common.Deduplicate(keys)
-	sort.Strings(keys)
-	for _, key := range keys {
-		for _, c := range []byte(key) {
-			if !chars.IsValidChar(c) {
-				return nil, fmt.Errorf("char out of range: %c", c)
-			}
-		}
-	}
+	slices.Sort(keys)
+	keys = slices.Compact(keys)
 
 	if len(keys) == 0 {
 		// A trie with no keys matches nothing. Build a degenerate trie
@@ -170,11 +167,16 @@ func NewTrie(keys []string, chars *ValidChars) (*Trie, error) {
 		return &Trie{chars: chars}, nil
 	}
 
-	// s and e are spans into keys, col is a character column, so int32 is far
-	// beyond any reachable bound while halving the queue: this is the largest
-	// transient in the build, and the whole queue is live until the trie is
-	// finished.
-	type qElt struct{ s, e, col int32 }
+	ss := &Trie{
+		chars: chars,
+		// Labels hold chars.table values, i.e. 0..Size()-1, so unitBitSize
+		// derives from the max value rather than the alphabet size: the 2-char
+		// ('0'/'1') CIDR trie needs 1 bit per label instead of 2.
+		labels: bitlist.NewCompactBitList(bits.Len(uint(max(chars.Size()-1, 0)))),
+	}
+	lIdx := 0
+
+	type qElt struct{ s, e, col int }
 
 	// Pre-compute exact queue size from sorted keys to avoid both growslice
 	// and over-allocation. For sorted distinct strings, trie node count is:
@@ -194,27 +196,16 @@ func NewTrie(keys []string, chars *ValidChars) (*Trie, error) {
 		}
 		nodeCount += len(key) - lcp
 	}
-	// Size every builder from nodeCount up front. nodeCount nodes imply
-	// nodeCount-1 edges and 2*nodeCount-1 label-bitmap bits, so the label
-	// list, the leaf bitset and the label bitmap all have a known final size.
-	// Growing them instead doubles peak memory while a reload builds the next
-	// generation's routing matcher, and the matcher is the largest object dae
-	// allocates.
-	ss := &Trie{
-		chars:       chars,
-		labels:      bitlist.NewCompactBitListCap(bits.Len(uint(chars.Size())), nodeCount-1),
-		leaves:      make([]uint64, 0, (nodeCount+63)/64),
-		labelBitmap: make([]uint64, 0, (2*nodeCount+63)/64),
-	}
-	lIdx := 0
-
 	queue := make([]qElt, 0, nodeCount)
-	queue = append(queue, qElt{0, int32(len(keys)), 0})
+	queue = append(queue, qElt{0, len(keys), 0})
+	// A tree has nodeCount-1 edges; LOUDS stores one bit per edge and node.
+	ss.leaves = make([]uint64, (nodeCount+63)/64)
+	ss.labelBitmap = make([]uint64, (2*nodeCount-1+63)/64)
 
 	for i := 0; i < len(queue); i++ {
 		elt := queue[i]
 
-		if int(elt.col) == len(keys[elt.s]) {
+		if elt.col == len(keys[elt.s]) {
 			// a leaf node
 			elt.s++
 			setBit(&ss.leaves, i, 1)
@@ -224,7 +215,25 @@ func NewTrie(keys []string, chars *ValidChars) (*Trie, error) {
 
 			frm := j
 
-			for ; j < elt.e && keys[j][elt.col] == keys[frm][elt.col]; j++ {
+			label := keys[frm][elt.col]
+			if elt.e-j > 32 {
+				// All keys in this range share the preceding columns. Their
+				// current bytes are sorted too, so find the next edge without
+				// rescanning every key at every shared-prefix depth.
+				lo, hi := j+1, elt.e
+				for lo < hi {
+					mid := lo + (hi-lo)/2
+					if keys[mid][elt.col] == label {
+						lo = mid + 1
+					} else {
+						hi = mid
+					}
+				}
+				j = lo
+			} else {
+				for j < elt.e && keys[j][elt.col] == label {
+					j++
+				}
 			}
 
 			queue = append(queue, qElt{frm, j, elt.col + 1})
@@ -239,14 +248,11 @@ func NewTrie(keys []string, chars *ValidChars) (*Trie, error) {
 
 	ss.init()
 
-	// Tighten. The builders above were sized from nodeCount, so this normally
-	// only copies when the estimate came up short.
+	// Tighten.
 	ss.labels.Tighten()
-	ss.leaves = tightenUint64(ss.leaves)
-	ss.labelBitmap = tightenUint64(ss.labelBitmap)
 
-	ss.ranksBL = bitlist.NewCompactBitListCap(bits.Len64(uint64(ss.ranks[len(ss.ranks)-1])), len(ss.ranks))
-	ss.selectsBL = bitlist.NewCompactBitListCap(bits.Len64(uint64(ss.selects[len(ss.selects)-1])), len(ss.selects))
+	ss.ranksBL = bitlist.NewCompactBitList(bits.Len64(uint64(ss.ranks[len(ss.ranks)-1])))
+	ss.selectsBL = bitlist.NewCompactBitList(bits.Len64(uint64(ss.selects[len(ss.selects)-1])))
 	for _, v := range ss.ranks {
 		ss.ranksBL.Append(uint64(v))
 	}
@@ -298,17 +304,6 @@ func (ss *Trie) HasPrefix(word string) bool {
 	return getBit(ss.leaves, nodeId) != 0
 }
 
-// tightenUint64 drops the spare capacity of a bitset so a retained trie does
-// not pin words it can never index.
-func tightenUint64(bm []uint64) []uint64 {
-	if cap(bm) == len(bm) {
-		return bm
-	}
-	out := make([]uint64, len(bm))
-	copy(out, bm)
-	return out
-}
-
 func setBit(bm *[]uint64, i int, v int) {
 	for i>>6 >= len(*bm) {
 		*bm = append(*bm, 0)
@@ -322,13 +317,13 @@ func getBit(bm []uint64, i int) uint64 {
 
 // init builds pre-calculated cache to speed up rank() and select()
 func (ss *Trie) init() {
-	ss.ranks = []int32{0}
+	ss.ranks = make([]int32, 1, len(ss.labelBitmap)+1)
 	for i := 0; i < len(ss.labelBitmap); i++ {
 		n := bits.OnesCount64(ss.labelBitmap[i])
 		ss.ranks = append(ss.ranks, ss.ranks[len(ss.ranks)-1]+int32(n))
 	}
 
-	ss.selects = []int32{}
+	ss.selects = make([]int32, 0, (int(ss.ranks[len(ss.ranks)-1])+63)/64)
 	n := 0
 	for i := 0; i < len(ss.labelBitmap)<<6; i++ {
 		z := int(ss.labelBitmap[i>>6]>>uint(i&63)) & 1
