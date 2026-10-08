@@ -92,10 +92,43 @@ func (b *RulesBuilder) Apply(rules []*config_parser.RoutingRule) (err error) {
 
 func groupParamValuesByKey(params []*config_parser.Param) (keyToValues map[string][]string, keyOrder []string) {
 	groups := make(map[string][]string)
+
+	if len(params) == 0 {
+		return groups, nil
+	}
+
+	// Most expanded domain rules have only one key. Avoid map lookups per
+	// value in that case, while retaining first-seen order for mixed rules.
+	key := params[0].Key
+	singleKey := true
+	for _, param := range params[1:] {
+		if param.Key != key {
+			singleKey = false
+			break
+		}
+	}
+	if singleKey {
+		values := make([]string, len(params))
+		for i, param := range params {
+			values[i] = param.Val
+		}
+		groups[key] = values
+		return groups, []string{key}
+	}
+
+	// Expanded geosite rules can contain hundreds of thousands of values.
+	// Count first to avoid copying pointer-bearing strings during slice growth.
+	counts := make(map[string]int)
 	for _, param := range params {
-		if _, ok := groups[param.Key]; !ok {
+		if _, ok := counts[param.Key]; !ok {
 			keyOrder = append(keyOrder, param.Key)
 		}
+		counts[param.Key]++
+	}
+	for _, k := range keyOrder {
+		groups[k] = make([]string, 0, counts[k])
+	}
+	for _, param := range params {
 		groups[param.Key] = append(groups[param.Key], param.Val)
 	}
 	return groups, keyOrder
