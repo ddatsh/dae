@@ -320,9 +320,10 @@ func NewUdpEndpointPool() *UdpEndpointPool {
 		janitorStop: make(chan struct{}),
 		janitorDone: make(chan struct{}),
 	}
-	for i := range udpEndpointCreateShardCount {
-		p.shards[i].pool = make(map[UdpEndpointKey]*UdpEndpoint, 16)
-	}
+	// Shard maps are created lazily on first write (createEndpointLocked /
+	// cacheFailureLocked): 1024 eagerly preallocated maps cost ~4MB of heap
+	// for pools that stay mostly empty, while reads, ranges, deletes and len
+	// are all nil-safe.
 	p.startJanitor()
 	return p
 }
@@ -758,6 +759,9 @@ dialSuccess:
 
 	shard := p.shardFor(key)
 	shard.mu.Lock()
+	if shard.pool == nil {
+		shard.pool = make(map[UdpEndpointKey]*UdpEndpoint)
+	}
 	shard.pool[key] = ue
 	shard.mu.Unlock()
 	p.registerEndpoint(ue)
@@ -825,6 +829,9 @@ func (p *UdpEndpointPool) cacheFailureLocked(key UdpEndpointKey, log *logrus.Log
 
 	shard := p.shardFor(key)
 	shard.mu.Lock()
+	if shard.pool == nil {
+		shard.pool = make(map[UdpEndpointKey]*UdpEndpoint)
+	}
 	shard.pool[key] = failedUe
 	shard.mu.Unlock()
 }

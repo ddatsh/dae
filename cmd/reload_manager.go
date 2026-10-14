@@ -22,6 +22,7 @@ import (
 	"github.com/daeuniverse/dae/config"
 	"github.com/daeuniverse/dae/control"
 	"github.com/daeuniverse/dae/pkg/config_parser"
+	"github.com/daeuniverse/dae/pkg/prof"
 	"github.com/okzk/sdnotify"
 	"github.com/sirupsen/logrus"
 )
@@ -470,6 +471,8 @@ func (m *reloadManager) startControlPlaneRetirement(
 		supervisor.markRetirementComplete(task.generation)
 		if log != nil {
 			log.Infoln("[Reload] Retired old control plane")
+			prof.Stop()
+			log.Infof("reload time: %v", time.Since(prof.StartTime()))
 		}
 	}(task)
 }

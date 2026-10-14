@@ -171,6 +171,13 @@ type ControlPlaneBuildOptions struct {
 	DirectDialer          netproxy.Dialer
 	FullconeDirectDialer  netproxy.Dialer
 	SystemDNSResolver     *netutils.SystemDNSResolver
+	PreparedDaeDNSRouter  *daedns.Router
+	DaeDNSRouterPrepared  bool
+	// LocationFinder shares the caller's asset-locator instance so DNS and
+	// routing builds resolve geoip/geosite paths through one cache instead of
+	// re-statting the search dirs per stage. When nil, a generation-local
+	// finder is created from externGeoDataDirs.
+	LocationFinder *assets.LocationFinder
 }
 
 var (
@@ -458,7 +465,7 @@ func NewControlPlaneWithContextOptions(
 			return nil, err
 		}
 		log.Infof("Loading eBPF programs and maps into the kernel...")
-		log.Infof("The loading process takes about 120MB free memory, which will be released after loading. Insufficient memory will cause loading failure.")
+		//log.Infof("The loading process takes about 120MB free memory, which will be released after loading. Insufficient memory will cause loading failure.")
 	}
 	// var bpf bpfObjects
 	ProgramOptions := ebpf.ProgramOptions{
@@ -574,7 +581,10 @@ func NewControlPlaneWithContextOptions(
 		systemDNSResolver = netutils.NewSystemDNSResolver(netip.MustParseAddrPort(global.FallbackResolver))
 	}
 
-	locationFinder := assets.NewLocationFinder(externGeoDataDirs)
+	locationFinder := buildOpts.LocationFinder
+	if locationFinder == nil {
+		locationFinder = assets.NewLocationFinder(externGeoDataDirs)
+	}
 	option := dialer.NewGlobalOption(global, log)
 	option.SetRuntimeDependencies(directDialer, fullconeDirectDialer, systemDNSResolver)
 
@@ -606,12 +616,16 @@ func NewControlPlaneWithContextOptions(
 		return netip.Addr{}, fmt.Errorf("no address for %q", host)
 	})
 
-	option.DaeDNS, err = daedns.NewWithOption(log, global, dnsConfig, &daedns.NewOption{
-		LocationFinder: locationFinder,
-		DirectDialer:   directDialer,
-	})
-	if err != nil {
-		return nil, err
+	if buildOpts.DaeDNSRouterPrepared {
+		option.DaeDNS = buildOpts.PreparedDaeDNSRouter
+	} else {
+		option.DaeDNS, err = daedns.NewWithOption(log, global, dnsConfig, &daedns.NewOption{
+			LocationFinder: locationFinder,
+			DirectDialer:   directDialer,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	if option.DaeDNS != nil {
 		deferFuncs = append(deferFuncs, option.DaeDNS.Close)
@@ -668,6 +682,7 @@ func NewControlPlaneWithContextOptions(
 			return nil, fmt.Errorf(`failed to create group "%v": %w`, group.Name, err)
 		}
 		// Convert node links to dialers.
+		/*
 		if log.IsLevelEnabled(logrus.DebugLevel) {
 			log.Debugf(`Group "%v" node list:`, group.Name)
 			for _, d := range dialers {
@@ -677,6 +692,7 @@ func NewControlPlaneWithContextOptions(
 				log.Debugln("\t<Empty>")
 			}
 		}
+        */
 		groupOption, err := parseGroupOverrideOptionWithRuntime(group, *global, log, option)
 		finalOption := option
 		if err == nil && groupOption != nil {
@@ -721,7 +737,7 @@ func NewControlPlaneWithContextOptions(
 		outboundId2Name[uint8(i)] = o.Name
 	}
 	// Apply rules optimizers.
-	log.Infoln("Optimizing and loading routing rules (this may take a while for large rule sets)...")
+	//log.Infoln("Optimizing and loading routing rules (this may take a while for large rule sets)...")
 	if err := checkCtx("optimize routing rules"); err != nil {
 		return nil, err
 	}
@@ -762,6 +778,7 @@ func NewControlPlaneWithContextOptions(
 	if err = core.clearDomainRoutingSlot(core.RoutingEpochSlot()); err != nil {
 		return nil, fmt.Errorf("clear inactive domain routing epoch: %w", err)
 	}
+	/*
 	if log.IsLevelEnabled(logrus.DebugLevel) {
 		var debugBuilder strings.Builder
 		for _, rule := range routingProgram.Rules {
@@ -769,6 +786,7 @@ func NewControlPlaneWithContextOptions(
 		}
 		log.Debugf("RoutingA:\n%vfallback: %v\n", debugBuilder.String(), routingProgram.Fallback)
 	}
+    */
 	// Parse rules and build.
 	// Matcher construction (tries, bitlists) allocates heavily as well; keep
 	// GC relaxed for the whole build and restore once it is done.
@@ -906,6 +924,7 @@ func NewControlPlaneWithContextOptions(
 	dnsUpstream, err := dns.New(dnsConfig, &dns.NewOption{
 		Logger:                  log,
 		LocationFinder:          locationFinder,
+		PreparedRequestMatcher:  option.DaeDNS.RequestMatcher(),
 		UpstreamReadyCallback:   plane.dnsUpstreamReadyCallback,
 		UpstreamResolverNetwork: common.MagicNetwork("udp", global.SoMarkFromDae, global.Mptcp),
 		UpstreamHostResolver:    upstreamHostResolver,
@@ -1649,6 +1668,7 @@ func (c *ControlPlane) runReloadRetirementCleanup(staleBeforeNs uint64) {
 		}
 		return
 	}
+	/*
 	c.log.WithFields(logrus.Fields{
 		"redirect_deleted":        redirectDeleted,
 		"cookie_pid_deleted":      cookieDeleted,
@@ -1656,6 +1676,7 @@ func (c *ControlPlane) runReloadRetirementCleanup(staleBeforeNs uint64) {
 		"udp_conn_deleted":        udpStats.deleted,
 		"tcp_conn_deleted":        tcpStats.deleted,
 	}).Infoln("[Reload] Cleaned stale datapath state after generation retirement")
+	*/
 }
 
 // redirectTrackTimeout is the TTL for redirect entries.
@@ -1756,9 +1777,11 @@ func (c *ControlPlane) cleanupRedirectTrackMapBeforeLocked(staleBeforeNs uint64)
 	}
 
 	// Only log when there are actual changes
+	/*
 	if len(keysToDelete) > 0 {
 		c.log.Debugf("cleanupRedirectTrackMap: removed %d entries", len(keysToDelete))
 	}
+	*/
 
 	// Alert if map usage is high. The capacity is read from the loaded map
 	// instead of a second hard-coded copy of MAX_REDIRECT_TRACK_NUM: the map
@@ -1839,7 +1862,7 @@ func (c *ControlPlane) cleanupCookiePidMapBeforeLocked(staleBeforeNs uint64) int
 		if _, err := BpfMapBatchDelete(bpf.CookiePidMap, keysToDelete); err != nil {
 			c.log.Debugf("cleanupCookiePidMap: batch delete error: %v", err)
 		}
-		c.log.Debugf("cleanupCookiePidMap: removed %d entries", len(keysToDelete))
+		//c.log.Debugf("cleanupCookiePidMap: removed %d entries", len(keysToDelete))
 	}
 
 	maxEntries := bpf.CookiePidMap.MaxEntries()
@@ -1915,7 +1938,7 @@ func (c *ControlPlane) cleanupRoutingHandoffMapBeforeLocked(staleBeforeNs uint64
 		if _, deleteErr := BpfMapBatchDelete(bpf.RoutingHandoffMap, keysToDelete); deleteErr != nil {
 			c.log.Debugf("cleanupRoutingHandoffMap: batch delete error: %v", deleteErr)
 		}
-		c.log.Debugf("cleanupRoutingHandoffMap: removed %d expired entries", len(keysToDelete))
+		//c.log.Debugf("cleanupRoutingHandoffMap: removed %d expired entries", len(keysToDelete))
 	}
 
 	maxEntries := bpf.RoutingHandoffMap.MaxEntries()
@@ -2926,6 +2949,7 @@ func (c *ControlPlane) chooseBestDnsDialerSnapshot(
 	case consts.IpVersionStr_6:
 		selected.bestTarget = netip.AddrPortFrom(dnsUpstream.Ip6, dnsUpstream.Port)
 	}
+	/*
 	if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		fields := logrus.Fields{
 			"ipversions": ipversions,
@@ -2945,6 +2969,7 @@ func (c *ControlPlane) chooseBestDnsDialerSnapshot(
 		}
 		c.log.WithFields(fields).Traceln("Choose DNS path")
 	}
+	*/
 	if snapshotEnabled && !selectedPenalized {
 		c.storeDnsDialerSnapshot(snapshotKey, &selected, now)
 	}

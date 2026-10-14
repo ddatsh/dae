@@ -6,6 +6,8 @@
 package logger
 
 import (
+	"time"
+
 	"github.com/sirupsen/logrus"
 	prefixed "github.com/x-cray/logrus-prefixed-formatter"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -22,8 +24,11 @@ func SetLogger(log *logrus.Logger, logLevel string, disableTimestamp bool, logFi
 		DisableTimestamp: disableTimestamp,
 		FullTimestamp:    true,
 		ForceFormatting:  true,
-		TimestampFormat:  "2006-01-02 15:04:05",
+		TimestampFormat:  time.TimeOnly,
+		DisableUppercase: true,
+		ForceColors:      true,
 	})
+
 	if logFileOpt != nil {
 		log.SetOutput(logFileOpt)
 	}

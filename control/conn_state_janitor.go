@@ -53,7 +53,7 @@ var (
 	// connStateJanitorPressureInterval is the fast-path scan interval used
 	// while the connection-state maps are under pressure (overflow or high
 	// usage).
-	connStateJanitorPressureInterval = 1 * time.Second
+	connStateJanitorPressureInterval = 10 * time.Second
 	// connStateJanitorMaxInterval caps the poll backoff when the maps are
 	// calm. Kernel overflow events still wake the janitor immediately, so
 	// the relaxed cadence only delays the periodic non-event cleanups.
@@ -61,7 +61,7 @@ var (
 	// connStateJanitorSteadyInterval is the default scan interval for steady
 	// state. This keeps cleanup prompt without paying a full-table cost every
 	// second when map pressure is low.
-	connStateJanitorSteadyInterval = 5 * time.Second
+	connStateJanitorSteadyInterval = 30 * time.Second
 	// connStateJanitorPressureEnterUsage is the usage percentage that activates
 	// pressure mode for connection-state cleanup.
 	connStateJanitorPressureEnterUsage = 70
@@ -83,7 +83,7 @@ var (
 	// one (LAN ingress passes it through, WAN egress re-routes the packet),
 	// and a same-tuple SYN recreates it, so retiring idle ones is
 	// behavior-neutral. Aligned with the kernel's 300s UDP backstop.
-	tcpConnStateRoutinglessBackstop = 5 * time.Minute
+	tcpConnStateRoutinglessBackstop = 1 * time.Minute
 )
 
 type mapCleanupStats struct {
@@ -213,7 +213,7 @@ func (r *bpfMaintenanceRuntime) run() {
 		}
 
 		if lastHealthCheck.IsZero() || now.Sub(lastHealthCheck) >= 5*time.Second {
-			c.checkBpfMapHealth(udpOverflow, tcpOverflow)
+			//c.checkBpfMapHealth(udpOverflow, tcpOverflow)
 			lastHealthCheck = now
 		}
 
@@ -495,6 +495,7 @@ func (c *ControlPlane) cleanupConnStateMapBeforeLocked(aggressiveCleanup bool, s
 	}
 	tcpStats.deleted = len(tcpKeysToDelete)
 
+    /*
 	if len(udpKeysToDelete) > 0 {
 		if aggressiveCleanup {
 			c.log.Debugf("cleanupConnStateMap: aggressive cleanup removed %d UDP entries (%d%% usage)",
@@ -511,6 +512,7 @@ func (c *ControlPlane) cleanupConnStateMapBeforeLocked(aggressiveCleanup bool, s
 			c.log.Debugf("cleanupConnStateMap: removed %d expired TCP entries", len(tcpKeysToDelete))
 		}
 	}
+    */
 
 	return udpStats, tcpStats
 }

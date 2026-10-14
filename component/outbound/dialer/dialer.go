@@ -6,25 +6,24 @@
 package dialer
 
 import (
-	"context"
-	"fmt"
-	"net"
-	"net/http"
-	"net/netip"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
-	"unsafe"
+    "context"
+    "fmt"
+    "net"
+    "net/http"
+    "net/netip"
+    "strings"
+    "sync"
+    "sync/atomic"
+    "time"
 
-	"github.com/daeuniverse/dae/common"
-	"github.com/daeuniverse/dae/common/consts"
-	"github.com/daeuniverse/dae/component/daedns"
-	"github.com/daeuniverse/dae/config"
-	D "github.com/daeuniverse/outbound/dialer"
-	stickyip "github.com/daeuniverse/outbound/dialer/stickyip"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/sirupsen/logrus"
+    "github.com/daeuniverse/dae/common"
+    "github.com/daeuniverse/dae/common/consts"
+    "github.com/daeuniverse/dae/component/daedns"
+    "github.com/daeuniverse/dae/config"
+    D "github.com/daeuniverse/outbound/dialer"
+    stickyip "github.com/daeuniverse/outbound/dialer/stickyip"
+    "github.com/daeuniverse/outbound/netproxy"
+    "github.com/sirupsen/logrus"
 )
 
 // Connectivity check indices.
@@ -318,9 +317,11 @@ func NewDialerContext(ctx context.Context, dialer netproxy.Dialer, option *Globa
 	// Initialize recovery detection with adjusted max backoff
 	d.initRecoveryDetection(option.CheckInterval)
 
+	/*
 	option.Log.WithField("dialer", d.Property().Name).
 		WithField("p", unsafe.Pointer(d)).
 		Traceln("NewDialer")
+	*/
 	return d
 }
 
