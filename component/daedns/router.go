@@ -55,6 +55,7 @@ type Router struct {
 	upstreams             map[string]*componentdns.UpstreamResolver
 	upstreamByIndex       []*componentdns.UpstreamResolver
 	requestMatcher        *componentdns.RequestMatcher
+	upstreamFilterMatcher *componentdns.UpstreamFilterMatcher
 	requestRouting        *componentdns.CompiledRequestRouting
 	subMatcher            *compiledMatcher[subscriptionMeta]
 	nodeMatcher           *compiledMatcher[NodeMeta]
@@ -257,6 +258,17 @@ func (r *Router) RequestMatcher() *componentdns.RequestMatcher {
 	}
 	return r.requestMatcher
 }
+
+// UpstreamFilterMatcher returns the matcher compiled for the request rules
+// that reference upstream(name). The control plane reuses it together with
+// RequestMatcher within the same generation. Nil when there are none.
+func (r *Router) UpstreamFilterMatcher() *componentdns.UpstreamFilterMatcher {
+	if r == nil {
+		return nil
+	}
+	return r.upstreamFilterMatcher
+}
+
 func httpClientCacheKey(upstream *componentdns.Upstream, target netip.AddrPort, http3Mode bool) string {
 	scheme := "https"
 	if http3Mode {
