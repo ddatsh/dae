@@ -428,6 +428,7 @@ func (c *ControlPlane) adoptTCPFlow(
 		runtime = c.egressRuntime
 	}
 	flow, err := manager.adoptTCP(ingress, egress, binding, runtime, keys, src, dst, routingResult)
+	binding.Egress.OrigDst = dst.String()
 	var drainRelease func()
 	var failedEgress netproxy.Conn
 	if err == nil && ownership != nil {

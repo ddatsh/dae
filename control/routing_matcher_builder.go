@@ -1208,6 +1208,7 @@ func (b *RoutingMatcherBuilder) BuildUserspace() (matcher *RoutingMatcher, err e
 		predicateGroups: append([]routingMatcherPredicateGroupSpan(nil), b.predicateGroups...),
 		ruleSpans:       append([]routingMatcherRuleSpan(nil), b.ruleSpans...),
 	}
+	routingMatcherLeakRegistry.Register(matcher, "RoutingMatcher")
 
 	// Memory optimization: Release large temporary data structures
 	// after building the matcher to reduce memory footprint.

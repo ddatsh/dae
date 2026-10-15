@@ -5,7 +5,10 @@
 
 package control
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // dnsControllerOption is called from three places: the initial build, reload
 // reuse (ReuseForReload) and the staged DNS handoff. Every config-derived
@@ -49,4 +52,55 @@ func TestDnsControllerOptionCarriesRuntimeTunables(t *testing.T) {
 	if len(option.FixedDomainTtl) != 1 || option.FixedDomainTtl["example.com."] != 60 {
 		t.Fatalf("dnsControllerOption().FixedDomainTtl = %v, want %v", option.FixedDomainTtl, fixedTtl)
 	}
+}
+
+// The prepared-DNS hooks close over the previous control-plane generation, so
+// every terminal path of startPreparedDNSListenerWithWarmupTimeout must drop
+// them. Previously the full-handoff path (reuse hook reuses the listener,
+// flipping delayDNSListenerStart off) returned early and left the start hook
+// set forever, pinning the retired generation on the active plane.
+func TestPreparedDNSHooksClearedOnTerminalPaths(t *testing.T) {
+	t.Run("full handoff via reuse hook", func(t *testing.T) {
+		rt := newControlPlaneDNSRuntime(true)
+		rt.noteDNSUpstreamAvailable()
+		startHookRan := false
+		rt.preparedDNSReuseHook = func() error {
+			// Mirror reuseDNSListenerFrom: a successful listener reuse marks
+			// the prepared flow complete.
+			rt.delayDNSListenerStart = false
+			return nil
+		}
+		rt.preparedDNSStartHook = func() error {
+			startHookRan = true
+			return nil
+		}
+		if err := rt.startPreparedDNSListenerWithWarmupTimeout(t.Context(), nil, nil, time.Second); err != nil {
+			t.Fatalf("startPreparedDNSListenerWithWarmupTimeout: %v", err)
+		}
+		if startHookRan {
+			t.Fatal("start hook ran after full listener handoff")
+		}
+		if rt.preparedDNSReuseHook != nil || rt.preparedDNSStartHook != nil {
+			t.Fatal("hooks survive the full-handoff early return; retired generation stays pinned")
+		}
+	})
+
+	t.Run("already started at entry", func(t *testing.T) {
+		rt := newControlPlaneDNSRuntime(false)
+		reuseHookRan := false
+		rt.preparedDNSReuseHook = func() error {
+			reuseHookRan = true
+			return nil
+		}
+		rt.preparedDNSStartHook = func() error { return nil }
+		if err := rt.startPreparedDNSListenerWithWarmupTimeout(t.Context(), nil, nil, time.Second); err != nil {
+			t.Fatalf("startPreparedDNSListenerWithWarmupTimeout: %v", err)
+		}
+		if reuseHookRan {
+			t.Fatal("reuse hook ran although the listener was already started")
+		}
+		if rt.preparedDNSReuseHook != nil || rt.preparedDNSStartHook != nil {
+			t.Fatal("hooks survive the entry early return; retired generation stays pinned")
+		}
+	})
 }

@@ -58,7 +58,10 @@ func (c *DnsController) currentQtypePrefer() uint16 {
 	return rt.qtypePrefer
 }
 
-func (c *DnsController) currentOptimisticCacheConfig() (enabled bool, ttl int, staleReplyTtl int, maxCacheSize int) {
+// currentOptimisticCacheConfig runs on the store receiver: the janitor's
+// eviction tick reads it from the store-owned goroutine. Facade-side callers
+// reach it unchanged through embedding promotion.
+func (c *dnsControllerStore) currentOptimisticCacheConfig() (enabled bool, ttl int, staleReplyTtl int, maxCacheSize int) {
 	rt := c.runtime()
 	if rt == nil {
 		return false, 0, 0, 0
@@ -163,6 +166,17 @@ func (c *DnsController) updateRuntime(option *DnsControllerOption, routing *dns.
 		c.cacheProjectionMu.Unlock()
 	}
 	return nil
+}
+
+// runtime on the store serves the store-owned goroutine subtrees (janitor,
+// BPF worker) whose methods run on *dnsControllerStore receivers. The facade
+// keeps its own nil-guarded runtime() below; Go resolves the shallower
+// facade method for facade receivers and this one for store receivers.
+func (c *dnsControllerStore) runtime() *dnsControllerRuntimeState {
+	if c == nil {
+		return nil
+	}
+	return c.runtimeState.Load()
 }
 
 func (c *DnsController) runtime() *dnsControllerRuntimeState {
