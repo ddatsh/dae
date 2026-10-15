@@ -231,6 +231,67 @@ func TestBpfMaintenanceRuntimeRejectsStaleActivation(t *testing.T) {
 	}
 }
 
+func TestBpfMaintenanceCommitReleasesPredecessor(t *testing.T) {
+	resetBpfMaintenanceRegistryForTest(t)
+	defer resetBpfMaintenanceRegistryForTest(t)
+
+	bpf := &bpfObjects{}
+	oldPlane := &ControlPlane{}
+	newPlane := &ControlPlane{}
+	oldBinding := bindBpfMaintenanceRuntime(bpf, oldPlane)
+	newBinding := bindBpfMaintenanceRuntime(bpf, newPlane)
+
+	if err := oldBinding.activate(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := newBinding.activate(oldPlane); err != nil {
+		t.Fatal(err)
+	}
+	if got := newBinding.previous.Load(); got != oldPlane {
+		t.Fatalf("retained predecessor = %p, want old %p", got, oldPlane)
+	}
+
+	newBinding.commit()
+	if got := newBinding.previous.Load(); got != nil {
+		t.Fatalf("predecessor = %p after commit, want nil", got)
+	}
+	// A rollback arriving after the handoff committed must be a no-op: it
+	// must not restore a released predecessor nor clear the active target.
+	if err := newBinding.rollback(); err != nil {
+		t.Fatalf("rollback after commit: %v", err)
+	}
+	if got := oldBinding.runtime.active.Load(); got != newPlane {
+		t.Fatalf("active target = %p after post-commit rollback, want new %p", got, newPlane)
+	}
+}
+
+func TestBpfMaintenanceRollbackReleasesPredecessor(t *testing.T) {
+	resetBpfMaintenanceRegistryForTest(t)
+	defer resetBpfMaintenanceRegistryForTest(t)
+
+	bpf := &bpfObjects{}
+	oldPlane := &ControlPlane{}
+	newPlane := &ControlPlane{}
+	oldBinding := bindBpfMaintenanceRuntime(bpf, oldPlane)
+	newBinding := bindBpfMaintenanceRuntime(bpf, newPlane)
+
+	if err := oldBinding.activate(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := newBinding.activate(oldPlane); err != nil {
+		t.Fatal(err)
+	}
+	if err := newBinding.rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if got := newBinding.previous.Load(); got != nil {
+		t.Fatalf("predecessor = %p after rollback, want nil", got)
+	}
+	if got := oldBinding.runtime.active.Load(); got != oldPlane {
+		t.Fatalf("active target = %p after rollback, want restored old %p", got, oldPlane)
+	}
+}
+
 func TestStopBpfMaintenanceRuntimeJoinsActors(t *testing.T) {
 	resetBpfMaintenanceRegistryForTest(t)
 	defer resetBpfMaintenanceRegistryForTest(t)

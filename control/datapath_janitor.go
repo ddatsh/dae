@@ -19,6 +19,7 @@ type bpfMaintenanceBinding struct {
 	target    *ControlPlane
 	previous  atomic.Pointer[ControlPlane]
 	activated atomic.Bool
+	committed atomic.Bool
 }
 
 // bpfMaintenanceRuntime owns the one ringbuf reader for one BPF object set.
@@ -248,8 +249,24 @@ func (b *bpfMaintenanceBinding) deactivate() {
 	b.runtime.active.CompareAndSwap(b.target, nil)
 }
 
+// commit closes the rollback window of a staged activation and drops the
+// retained predecessor. The runtime outlives individual generations, so a
+// predecessor pointer left on the live generation's binding would chain every
+// retired plane to it and pin the whole matcher tree.
+func (b *bpfMaintenanceBinding) commit() {
+	if b == nil {
+		return
+	}
+	if b.committed.CompareAndSwap(false, true) {
+		b.previous.Store(nil)
+	}
+}
+
 func (b *bpfMaintenanceBinding) rollback() error {
-	if b == nil || b.runtime == nil || !b.activated.CompareAndSwap(true, false) {
+	if b == nil || b.runtime == nil || b.committed.Load() {
+		return nil
+	}
+	if !b.activated.CompareAndSwap(true, false) {
 		return nil
 	}
 	previous := b.previous.Load()
@@ -257,6 +274,7 @@ func (b *bpfMaintenanceBinding) rollback() error {
 		b.activated.Store(true)
 		return fmt.Errorf("BPF maintenance target changed during rollback")
 	}
+	b.previous.Store(nil)
 	return nil
 }
 

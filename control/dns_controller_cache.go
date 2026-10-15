@@ -49,7 +49,11 @@ func (c *DnsController) storeDnsCache(cacheKey string, cache *DnsCache) (previou
 	return previous, loaded
 }
 
-func (c *DnsController) loadAndDeleteDnsCache(cacheKey string) (value any, loaded bool) {
+// The methods below run on the shared store receiver: they are reachable from
+// the store-owned janitor goroutine, which must never capture a generation
+// facade. Facade-side callers reach them unchanged through embedding promotion.
+
+func (c *dnsControllerStore) loadAndDeleteDnsCache(cacheKey string) (value any, loaded bool) {
 	value, loaded = c.dnsCache.LoadAndDelete(cacheKey)
 	if loaded {
 		c.decrementDnsCacheSize()
@@ -58,7 +62,7 @@ func (c *DnsController) loadAndDeleteDnsCache(cacheKey string) (value any, loade
 	return value, loaded
 }
 
-func (c *DnsController) compareAndDeleteDnsCache(cacheKey string, cache *DnsCache) bool {
+func (c *dnsControllerStore) compareAndDeleteDnsCache(cacheKey string, cache *DnsCache) bool {
 	if !c.dnsCache.CompareAndDelete(cacheKey, cache) {
 		return false
 	}
@@ -71,7 +75,7 @@ func (c *DnsController) compareAndDeleteDnsCache(cacheKey string, cache *DnsCach
 // keeping the entry-removal side effects in one place. The base-key index only
 // tracks string keys, so a non-string key (reachable only from corrupted state)
 // is dropped from the map and the size counter without an index update.
-func (c *DnsController) deleteDnsCacheEntry(key any) {
+func (c *dnsControllerStore) deleteDnsCacheEntry(key any) {
 	cacheKey, ok := key.(string)
 	if !ok {
 		if _, loaded := c.dnsCache.LoadAndDelete(key); loaded {
@@ -101,7 +105,7 @@ func newDnsCacheKeySet(cacheKey string) *dnsCacheKeySet {
 // observes the drop and retries with a fresh set. Without that re-check under
 // the set lock, an insert racing the drop would be lost and family removal
 // would silently stop matching the entry.
-func (c *DnsController) dnsCacheIndexAdd(cacheKey string) {
+func (c *dnsControllerStore) dnsCacheIndexAdd(cacheKey string) {
 	baseKey := dnsCacheBaseKey(cacheKey)
 	if baseKey == "" {
 		return
@@ -134,7 +138,7 @@ func (c *DnsController) dnsCacheIndexAdd(cacheKey string) {
 // itself once it becomes empty. Emptiness is decided while holding the set
 // lock, and the set is unregistered under that same lock so the check cannot be
 // invalidated by a concurrent insert.
-func (c *DnsController) dnsCacheIndexRemove(cacheKey string) {
+func (c *dnsControllerStore) dnsCacheIndexRemove(cacheKey string) {
 	baseKey := dnsCacheBaseKey(cacheKey)
 	if baseKey == "" {
 		return
@@ -158,7 +162,7 @@ func (c *DnsController) dnsCacheIndexRemove(cacheKey string) {
 // dnsCacheIndexSnapshot returns the exact cache keys indexed for baseKey. It is
 // lock-free with respect to cacheProjectionMu: callers use it to decide whether
 // a family has entries before taking the projection write lock.
-func (c *DnsController) dnsCacheIndexSnapshot(baseKey string) []string {
+func (c *dnsControllerStore) dnsCacheIndexSnapshot(baseKey string) []string {
 	if baseKey == "" {
 		return nil
 	}
@@ -182,7 +186,7 @@ func (c *DnsController) dnsCacheIndexSnapshot(baseKey string) []string {
 	return keys
 }
 
-func (c *DnsController) dnsCacheIndexLen() int {
+func (c *dnsControllerStore) dnsCacheIndexLen() int {
 	total := 0
 	c.dnsCacheByBase.Range(func(_, value any) bool {
 		set, ok := value.(*dnsCacheKeySet)
@@ -204,7 +208,7 @@ func (c *DnsController) clearDnsCacheIndex() {
 	})
 }
 
-func (c *DnsController) decrementDnsCacheSize() {
+func (c *dnsControllerStore) decrementDnsCacheSize() {
 	for {
 		current := c.dnsCacheSize.Load()
 		if current <= 0 || c.dnsCacheSize.CompareAndSwap(current, current-1) {
@@ -511,7 +515,7 @@ func (c *DnsController) rememberDnsKnowledge(baseKey string, originalDeadline ti
 	c.dnsKnowledge.Store(baseKey, entry)
 }
 
-func (c *DnsController) forgetDnsKnowledge(cacheKey string, cache *DnsCache) {
+func (c *dnsControllerStore) forgetDnsKnowledge(cacheKey string, cache *DnsCache) {
 	baseKey := dnsCacheBaseKey(cacheKey)
 	if baseKey == "" || cache == nil {
 		return
@@ -555,7 +559,7 @@ func (c *DnsController) syncDnsKnowledge(baseKey string) {
 // syncDnsKnowledgeLocked recomputes the knowledge entry for baseKey from the
 // base-key index. The index holds exactly the cache keys stored under baseKey,
 // so this touches one family instead of walking the whole cache.
-func (c *DnsController) syncDnsKnowledgeLocked(baseKey string) {
+func (c *dnsControllerStore) syncDnsKnowledgeLocked(baseKey string) {
 	entry := dnsKnowledgeEntry{}
 
 	for _, cacheKey := range c.dnsCacheIndexSnapshot(baseKey) {
@@ -605,7 +609,7 @@ func (c *DnsController) HasDnsKnowledge(baseKey string) bool {
 	return true
 }
 
-func (c *DnsController) invokeCacheDeleteCallback(cacheKey string, cache *DnsCache) {
+func (c *dnsControllerStore) invokeCacheDeleteCallback(cacheKey string, cache *DnsCache) {
 	rt := c.runtime()
 	if cache == nil || rt == nil || rt.cacheDeleteCallback == nil {
 		return
@@ -618,7 +622,7 @@ func (c *DnsController) invokeCacheDeleteCallback(cacheKey string, cache *DnsCac
 }
 
 // evictDnsCacheLocked removes one cache entry while cacheProjectionMu is held.
-func (c *DnsController) evictDnsCacheLocked(cacheKey string, cache *DnsCache) bool {
+func (c *dnsControllerStore) evictDnsCacheLocked(cacheKey string, cache *DnsCache) bool {
 	if cache == nil || !c.compareAndDeleteDnsCache(cacheKey, cache) {
 		return false
 	}
@@ -696,7 +700,7 @@ func (c *DnsController) trimDnsCacheToSizeLocked(targetSize int) {
 	})
 }
 
-func (c *DnsController) evictDnsRespCacheIfSame(cacheKey string, cache *DnsCache) {
+func (c *dnsControllerStore) evictDnsRespCacheIfSame(cacheKey string, cache *DnsCache) {
 	if cache == nil {
 		return
 	}
@@ -705,7 +709,7 @@ func (c *DnsController) evictDnsRespCacheIfSame(cacheKey string, cache *DnsCache
 	c.evictDnsCacheLocked(cacheKey, cache)
 }
 
-func (c *DnsController) evictExpiredDnsCache(now time.Time) {
+func (c *dnsControllerStore) evictExpiredDnsCache(now time.Time) {
 	optimisticCacheEnabled, optimisticCacheTtl, _, maxCacheSize := c.currentOptimisticCacheConfig()
 	// Step 1: Time-based eviction
 	// - When optimistic_cache_ttl > 0: evict entries older than (deadline + stale_window)
@@ -751,7 +755,7 @@ func (c *DnsController) evictExpiredDnsCache(now time.Time) {
 	}
 }
 
-func (c *DnsController) takeLRUScratch(minCap int) []cacheEntry {
+func (c *dnsControllerStore) takeLRUScratch(minCap int) []cacheEntry {
 	c.lruScratchMu.Lock()
 	defer c.lruScratchMu.Unlock()
 
@@ -765,7 +769,7 @@ func (c *DnsController) takeLRUScratch(minCap int) []cacheEntry {
 	return make([]cacheEntry, 0, minCap)
 }
 
-func (c *DnsController) putLRUScratch(entries []cacheEntry) {
+func (c *dnsControllerStore) putLRUScratch(entries []cacheEntry) {
 	if entries == nil {
 		return
 	}
@@ -788,7 +792,7 @@ func (c *DnsController) putLRUScratch(entries []cacheEntry) {
 // full sort (O(n log n)) or insertion sort (O(n²)) for better performance
 // with large caches. For typical cache sizes (<1000), the overhead is negligible.
 // For large caches (>5000), this is 10-100x faster than insertion sort.
-func (c *DnsController) evictLRUIfFull(maxCacheSize int) {
+func (c *dnsControllerStore) evictLRUIfFull(maxCacheSize int) {
 	if maxCacheSize <= 0 {
 		return
 	}
@@ -879,8 +883,7 @@ func (c *DnsController) evictLRUIfFull(maxCacheSize int) {
 // either one happens under the write lock, so reading them separately (without
 // the lock) would observe a half-applied store or delete and report drift that
 // does not exist.
-func (c *DnsController) reconcileDnsCacheIndex() {
-	c.requireStore()
+func (c *dnsControllerStore) reconcileDnsCacheIndex() {
 	c.cacheProjectionMu.RLock()
 	size := c.dnsCacheSize.Load()
 	indexed := int64(c.dnsCacheIndexLen())
@@ -899,7 +902,7 @@ func (c *DnsController) reconcileDnsCacheIndex() {
 // It runs under cacheProjectionMu because every production cache store holds
 // that lock: without it, an entry stored between the scan and the publication
 // would be missing from the rebuilt index.
-func (c *DnsController) rebuildDnsCacheIndex() {
+func (c *dnsControllerStore) rebuildDnsCacheIndex() {
 	c.cacheProjectionMu.Lock()
 	defer c.cacheProjectionMu.Unlock()
 
@@ -957,8 +960,7 @@ func (c *DnsController) rebuildDnsCacheIndex() {
 // IMPORTANT: This goroutine intentionally does NOT watch baseContext().Done().
 // See bpfUpdateWorker comment for the rationale — the same stale-context problem
 // applies here when the DnsController is reused across reload generations.
-func (c *DnsController) startDnsCacheJanitor() {
-	c.requireStore()
+func (c *dnsControllerStore) startDnsCacheJanitor() {
 	go func() {
 		ticker := time.NewTicker(dnsCacheJanitorInterval)
 		defer ticker.Stop()

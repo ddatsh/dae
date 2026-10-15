@@ -31,7 +31,9 @@ func truncationSummaryLogger(buf *bytes.Buffer) *logrus.Logger {
 func TestDnsTruncationSummaryIsSilentUntilSomethingHappens(t *testing.T) {
 	ctrl := newCorpusDnsController(t, truncatedTestConfig())
 	var buf bytes.Buffer
-	ctrl.log = truncationSummaryLogger(&buf)
+	// The truncation summary is emitted by the store-owned janitor, so the
+	// logger it reads lives on the shared store, not on the facade.
+	ctrl.dnsControllerStore.log = truncationSummaryLogger(&buf)
 
 	ctrl.reportDnsTruncationSummary()
 	if buf.Len() != 0 {
@@ -42,7 +44,7 @@ func TestDnsTruncationSummaryIsSilentUntilSomethingHappens(t *testing.T) {
 func TestDnsTruncationSummaryReportsIntervalRateAndWarnsOnFailure(t *testing.T) {
 	ctrl := newCorpusDnsController(t, truncatedTestConfig())
 	var buf bytes.Buffer
-	ctrl.log = truncationSummaryLogger(&buf)
+	ctrl.dnsControllerStore.log = truncationSummaryLogger(&buf)
 
 	// One interval with two successful upgrades and one failure: the summary
 	// must report the interval delta, the exact failure ratio and the lifetime

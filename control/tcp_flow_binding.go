@@ -31,6 +31,7 @@ type TcpEgressBinding struct {
 	NetworkType   dialer.NetworkType
 	SniffedDomain string
 	IsDialIp      bool
+	OrigDst       string
 }
 
 // TcpFlowBinding combines the policy and egress decisions fixed after a TCP dial succeeds.

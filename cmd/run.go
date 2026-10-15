@@ -560,6 +560,9 @@ func (r *Runner) Run() (err error) {
 			}
 		}()
 	}
+	control.RegisterLeakScanRoots(func() []any {
+		return []any{reloadManager, runtimeSupervisor}
+	})
 	fastExit := false
 	var fatalRunErr error
 	failRun := func(err error) {
@@ -838,6 +841,14 @@ loop:
 					var retiringGeneration *runtimeGeneration
 					if publishErr == nil {
 						retiringGeneration, publishErr = runtimeSupervisor.publishPrepared(handoff.preparedGeneration)
+					}
+					if publishErr == nil {
+						// The candidate is now the supervisor's active generation,
+						// so the staged BPF maintenance activation can no longer
+						// roll back. Release the retained predecessor; otherwise
+						// the live generation would pin the retiring plane for
+						// its entire lifetime.
+						handoff.newControlPlane.CommitPreparedBpfMaintenance()
 					}
 					if publishErr == nil && handoff.provisionalOwner {
 						handoff.newControlPlane.UnregisterProvisionalRoutingEpochExecutionOwner()
