@@ -910,6 +910,7 @@ func NewControlPlaneWithContextOptions(
 		},
 	}
 	constructedPlane = plane
+	planeLeakRegistry.Register(plane, "ControlPlane")
 	SetFailedQuicDcidCache(plane.failedQuicDcidCache)
 	SetAnyfromSoMark(global.SoMarkFromDae)
 	plane.deferFuncs = append(plane.deferFuncs, plane.closePublishedListenerFiles)
@@ -1779,9 +1780,9 @@ func (c *ControlPlane) cleanupRedirectTrackMapBeforeLocked(staleBeforeNs uint64)
 
 	// Only log when there are actual changes
 	/*
-	if len(keysToDelete) > 0 {
-		c.log.Debugf("cleanupRedirectTrackMap: removed %d entries", len(keysToDelete))
-	}
+		if len(keysToDelete) > 0 {
+			c.log.Debugf("cleanupRedirectTrackMap: removed %d entries", len(keysToDelete))
+		}
 	*/
 
 	// Alert if map usage is high. The capacity is read from the loaded map

@@ -209,8 +209,9 @@ func (c *DnsController) reportDnsTruncatedFallback(upstream *dns.Upstream, upgra
 // visibility pattern already used for the datapath counters
 // (ControlPlane.checkBpfMapHealth): periodic read, one line per interval, warn
 // only when the numbers say something is wrong.
-func (c *DnsController) reportDnsTruncationSummary() {
-	if c == nil || c.dnsControllerStore == nil || c.log == nil {
+// reportDnsTruncationSummary runs on the store receiver from the janitor tick.
+func (c *dnsControllerStore) reportDnsTruncationSummary() {
+	if c == nil || c.log == nil {
 		return
 	}
 	upgrades := c.dnsUdpTruncatedUpgrades.Load()

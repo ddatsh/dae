@@ -43,8 +43,10 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreAnyFunction("github.com/daeuniverse/dae/control.NewUdpEndpointPool.(*UdpEndpointPool).startJanitor.func1.1"),
 		goleak.IgnoreAnyFunction("github.com/daeuniverse/dae/control.(*AnyfromPool).startJanitor.func1.1"),
 		goleak.IgnoreAnyFunction("github.com/daeuniverse/dae/control.NewAnyfromPool.(*AnyfromPool).startJanitor.func1.1"),
-		// DNS cache janitor (explicitly does NOT watch baseContext).
-		goleak.IgnoreAnyFunction("github.com/daeuniverse/dae/control.(*DnsController).startDnsCacheJanitor.func1"),
+		// DNS cache janitor (explicitly does NOT watch baseContext). It is
+		// store-owned: the goroutine body is startDnsCacheJanitor.func1 on
+		// *dnsControllerStore and captures the shared store, never a facade.
+		goleak.IgnoreAnyFunction("github.com/daeuniverse/dae/control.(*dnsControllerStore).startDnsCacheJanitor.func1"),
 		// Third-party goroutine-pool supervisors (ants) — background by design.
 		goleak.IgnoreAnyFunction("github.com/panjf2000/ants/v2.(*poolCommon).purgeStaleWorkers"),
 		goleak.IgnoreAnyFunction("github.com/panjf2000/ants/v2.(*poolCommon).ticktock"),
