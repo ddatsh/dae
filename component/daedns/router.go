@@ -26,6 +26,7 @@ import (
 	"github.com/daeuniverse/dae/component/routing"
 	"github.com/daeuniverse/dae/config"
 	"github.com/daeuniverse/dae/pkg/config_parser"
+	"github.com/daeuniverse/dae/pkg/leakdebug"
 	"github.com/daeuniverse/outbound/netproxy"
 	"github.com/daeuniverse/outbound/protocol/direct"
 	"github.com/dlclark/regexp2"
@@ -37,6 +38,47 @@ const (
 	functionNode    = "node"
 	functionSubNode = "subnode"
 )
+
+// routerLeakRegistry is a temporary reload-leak probe (see pkg/leakdebug).
+var routerLeakRegistry leakdebug.Registry[Router]
+
+// resolvingDialerLeakRegistry is a temporary reload-leak probe tracking every
+// live generation-scoped resolver wrapper; one that still holds a retired
+// generation's Router is the intermediate pin of its DNS tries.
+var resolvingDialerLeakRegistry leakdebug.Registry[resolvingDialer]
+
+// LeakLiveRouters reports how many Router objects are still reachable after a
+// forced GC (debug builds only; used by the /live diagnostics endpoint).
+func LeakLiveRouters() int {
+	return len(routerLeakRegistry.LiveObjects())
+}
+
+// LeakLiveRouterPointers returns the still-reachable Router objects after a
+// forced GC, in creation order (debug builds only). The last entry belongs to
+// the active generation; earlier entries are stale holders of DNS tries.
+func LeakLiveRouterPointers() []*Router {
+	return routerLeakRegistry.LiveObjects()
+}
+
+// LeakResolvingDialers returns the live resolvingDialer wrappers as opaque
+// values after a forced GC (debug builds only), for the reference-graph scan.
+func LeakResolvingDialers() []any {
+	live := resolvingDialerLeakRegistry.LiveObjects()
+	out := make([]any, 0, len(live))
+	for _, d := range live {
+		out = append(out, any(d))
+	}
+	return out
+}
+
+// LeakHeldRouter returns the Router currently referenced by a resolvingDialer
+// value produced by LeakResolvingDialers, or nil.
+func LeakHeldRouter(v any) *Router {
+	if d, ok := v.(*resolvingDialer); ok {
+		return d.router.Load()
+	}
+	return nil
+}
 
 type NodeMeta struct {
 	SubscriptionTag string
@@ -73,6 +115,14 @@ type Router struct {
 	httpTransportFactory  httpTransportFactoryFunc
 	closed                bool
 
+	// resolvingDialers tracks every generation-scoped resolver wrapper this
+	// router created. A wrapper can outlive the router — it sits inside
+	// dialer chains and process-level caches the egress retire walk does not
+	// reach — so Close drops each wrapper's back-reference; otherwise a
+	// retired generation's DNS tries stay pinned forever.
+	resolvingDialersMu sync.Mutex
+	resolvingDialers   []*resolvingDialer
+
 	// Upstream UDP reply validation (observe-only). udpStaleResponses counts
 	// datagrams whose transaction ID does not match the request (previously
 	// dropped with no signal at all); udpQuestionEchoMismatches counts replies
@@ -94,8 +144,8 @@ type lookupCall struct {
 
 type NewOption struct {
 	CompiledRequestRouting *componentdns.CompiledRequestRouting
-	LocationFinder *assets.LocationFinder
-	DirectDialer   netproxy.Dialer
+	LocationFinder         *assets.LocationFinder
+	DirectDialer           netproxy.Dialer
 }
 
 type compiledMatcher[T any] struct {
@@ -218,6 +268,7 @@ func NewWithOption(log *logrus.Logger, global *config.Global, dnsCfg *config.Dns
 	if err != nil {
 		return nil, err
 	}
+	routerLeakRegistry.Register(router, "daedns.Router")
 	return router, nil
 }
 
@@ -246,6 +297,18 @@ func (r *Router) Close() error {
 	r.httpClientMu.Unlock()
 	for _, generation := range generations {
 		generation.Close()
+	}
+
+	// Release every wrapper's reference to this router. Surviving wrappers
+	// (captured in dialer chains or process-level caches) keep their lookup
+	// entry point but report errResolvingDialerRetired on use, matching the
+	// RetireForEstablishedFlows semantics.
+	r.resolvingDialersMu.Lock()
+	dialers := r.resolvingDialers
+	r.resolvingDialers = nil
+	r.resolvingDialersMu.Unlock()
+	for _, d := range dialers {
+		d.router.Store(nil)
 	}
 	return nil
 }
@@ -849,6 +912,12 @@ func newResolvingDialer(
 		controlHost:         controlHost,
 	}
 	d.router.Store(router)
+	if router != nil {
+		router.resolvingDialersMu.Lock()
+		router.resolvingDialers = append(router.resolvingDialers, d)
+		router.resolvingDialersMu.Unlock()
+	}
+	resolvingDialerLeakRegistry.Register(d, "newResolvingDialer")
 	return d
 }
 
