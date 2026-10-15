@@ -35,4 +35,16 @@ func (c *ControlPlane) RollbackPreparedRoutingEpoch() error {
 	return nil
 }
 
+// CommitPreparedBpfMaintenance closes the rollback window of a staged BPF
+// maintenance activation once the prepared generation became authoritative.
+// It releases the predecessor plane pointer retained during activation, which
+// would otherwise keep the retiring generation reachable from the shared
+// maintenance runtime for the whole lifetime of the live generation.
+func (c *ControlPlane) CommitPreparedBpfMaintenance() {
+	if c == nil || c.bpfMaintenance == nil {
+		return
+	}
+	c.bpfMaintenance.commit()
+}
+
 //go:generate go run -mod=mod github.com/cilium/ebpf/cmd/bpf2go -cc "$BPF_CLANG" "$BPF_STRIP_FLAG" -cflags "$BPF_CFLAGS" -tags "!dae_stub_ebpf" -target "$BPF_TARGET" -type port_range -type tuples_key bpf kern/tproxy.c -- -I./headers

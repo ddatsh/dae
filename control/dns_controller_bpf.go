@@ -199,10 +199,15 @@ func (c *DnsController) reprojectCachedRoutes(rt *dnsControllerRuntimeState) {
 	})
 }
 
+// The methods below run on the shared store receiver: they are reachable from
+// the store-owned BPF update worker goroutine, which must never capture a
+// generation facade (a captured facade stays pinned for the goroutine's
+// lifetime, invisible to data-path leak scans). Facade-side callers reach
+// them unchanged through embedding promotion.
+
 // startBpfUpdateWorker lazily starts the BPF update worker goroutine.
 // This is called on-demand when the first BPF update is needed.
-func (c *DnsController) startBpfUpdateWorker() {
-	c.requireStore()
+func (c *dnsControllerStore) startBpfUpdateWorker() {
 	c.bpfUpdateOnce.Do(func() {
 		c.bpfUpdateStopMu.Lock()
 		if c.bpfUpdateClosed.Load() {
@@ -224,12 +229,12 @@ func (c *DnsController) startBpfUpdateWorker() {
 
 // processBpfUpdateTask executes a single BPF map update task.
 // Returns true if the task was processed, false if it was nil/empty.
-func (c *DnsController) processBpfUpdateTask(task *bpfUpdateTask, draining bool) bool {
+func (c *dnsControllerStore) processBpfUpdateTask(task *bpfUpdateTask, draining bool) bool {
 	processed, _ := c.processBpfUpdateTaskInternal(task, draining, !draining)
 	return processed
 }
 
-func (c *DnsController) processBpfUpdateTaskInternal(task *bpfUpdateTask, draining, scheduleRetry bool) (processed, failed bool) {
+func (c *dnsControllerStore) processBpfUpdateTaskInternal(task *bpfUpdateTask, draining, scheduleRetry bool) (processed, failed bool) {
 	if task == nil || task.cache == nil {
 		return false, false
 	}
@@ -265,7 +270,7 @@ func (c *DnsController) processBpfUpdateTaskInternal(task *bpfUpdateTask, draini
 	return true, failed
 }
 
-func (c *DnsController) bpfUpdateTaskCurrent(task *bpfUpdateTask, rt *dnsControllerRuntimeState) bool {
+func (c *dnsControllerStore) bpfUpdateTaskCurrent(task *bpfUpdateTask, rt *dnsControllerRuntimeState) bool {
 	if task == nil || task.cache == nil || rt == nil || rt.cacheAccessCallback == nil ||
 		task.routeProjectionEpoch != rt.routeProjectionEpoch {
 		return false
@@ -281,7 +286,7 @@ func (c *DnsController) bpfUpdateTaskCurrent(task *bpfUpdateTask, rt *dnsControl
 	return ok && value == task.cache
 }
 
-func (c *DnsController) scheduleBpfProjectionRetry(task *bpfUpdateTask) {
+func (c *dnsControllerStore) scheduleBpfProjectionRetry(task *bpfUpdateTask) {
 	key, ok := task.retryKey()
 	if !ok || task.retryAttempt >= bpfProjectionRetryLimit || c.bpfUpdateClosed.Load() {
 		return
@@ -314,7 +319,7 @@ func (c *DnsController) scheduleBpfProjectionRetry(task *bpfUpdateTask) {
 	}
 }
 
-func (c *DnsController) takeBpfProjectionRetryIntents() (tasks []*bpfUpdateTask, overflow bool) {
+func (c *dnsControllerStore) takeBpfProjectionRetryIntents() (tasks []*bpfUpdateTask, overflow bool) {
 	c.bpfRetryMu.Lock()
 	defer c.bpfRetryMu.Unlock()
 	overflow = c.bpfRetryOverflow
@@ -333,7 +338,7 @@ func (c *DnsController) takeBpfProjectionRetryIntents() (tasks []*bpfUpdateTask,
 // reconcileCurrentBpfProjections recovers work coalesced by the bounded retry
 // queue. It walks the authoritative cache in place and never builds an
 // O(cache-size) task slice.
-func (c *DnsController) reconcileCurrentBpfProjections() (failed bool) {
+func (c *dnsControllerStore) reconcileCurrentBpfProjections() (failed bool) {
 	if c == nil || c.bpfUpdateClosed.Load() {
 		return false
 	}
@@ -387,7 +392,9 @@ func (c *DnsController) reconcileCurrentBpfProjections() (failed bool) {
 // canceled during retirement, the worker would exit prematurely, permanently killing
 // BPF domain_routing_map updates (sync.Once prevents restart). The worker exits only
 // via bpfUpdateStop, which is closed during DnsController.Close().
-func (c *DnsController) bpfUpdateWorker() {
+// The worker and the janitor are store-owned: they exit only via their stop
+// channels and never capture a generation facade.
+func (c *dnsControllerStore) bpfUpdateWorker() {
 	defer c.bpfUpdateWg.Done()
 	// Snapshot all lifecycle channels under the mutexes that guard their
 	// fields. Close may nil the fields after the graceful timeout while a
@@ -501,7 +508,7 @@ const bpfUpdateDrainBatch = 64
 // drainBpfUpdateTasks processes a bounded primary-task batch. Returning to the
 // worker select between batches prevents a sustained cache-write stream from
 // starving delayed retries or shutdown.
-func (c *DnsController) drainBpfUpdateTasks(bpfUpdateCh <-chan *bpfUpdateTask, draining bool) {
+func (c *dnsControllerStore) drainBpfUpdateTasks(bpfUpdateCh <-chan *bpfUpdateTask, draining bool) {
 	for range bpfUpdateDrainBatch {
 		select {
 		case task := <-bpfUpdateCh:

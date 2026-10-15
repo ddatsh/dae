@@ -120,7 +120,7 @@ func (c *cachedDnsForwarder) retire() error {
 
 var dnsForwarderFactory = newDnsForwarder
 
-func (c *DnsController) extractDnsForwarder(value any) DnsForwarder {
+func (c *dnsControllerStore) extractDnsForwarder(value any) DnsForwarder {
 	switch v := value.(type) {
 	case *cachedDnsForwarder:
 		return v.forwarder
@@ -131,13 +131,16 @@ func (c *DnsController) extractDnsForwarder(value any) DnsForwarder {
 	}
 }
 
-func (c *DnsController) evictIdleDnsForwarders(now time.Time) {
-	if c.dnsForwarderIdleTTL <= 0 {
+// evictIdleDnsForwarders runs on the store receiver from the janitor tick. The
+// idle TTL is the package-level default: forwarder lifetime is a store-level
+// property shared by every generation facade, not per-generation state.
+func (c *dnsControllerStore) evictIdleDnsForwarders(now time.Time) {
+	if dnsForwarderIdleTTL <= 0 {
 		return
 	}
 
 	nowNano := now.UnixNano()
-	idleNano := c.dnsForwarderIdleTTL.Nanoseconds()
+	idleNano := dnsForwarderIdleTTL.Nanoseconds()
 
 	c.dnsForwarderCache.Range(func(key, value any) bool {
 		k, ok := key.(dnsForwarderKey)

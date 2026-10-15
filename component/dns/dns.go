@@ -18,11 +18,27 @@ import (
 	"github.com/daeuniverse/dae/common/netutils"
 	"github.com/daeuniverse/dae/component/routing"
 	"github.com/daeuniverse/dae/config"
+	"github.com/daeuniverse/dae/pkg/leakdebug"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
 
 var ErrBadUpstreamFormat = fmt.Errorf("bad upstream format")
+
+// dnsLeakRegistry is a temporary reload-leak probe (see pkg/leakdebug).
+var dnsLeakRegistry leakdebug.Registry[Dns]
+
+// LeakLiveDns reports how many Dns objects are still reachable after a forced
+// GC (debug builds only; used by the /live diagnostics endpoint).
+func LeakLiveDns() int {
+	return len(dnsLeakRegistry.LiveObjects())
+}
+
+// LeakLiveDnsPointers returns the still-reachable Dns objects after a forced
+// GC, in creation order (debug builds only).
+func LeakLiveDnsPointers() []*Dns {
+	return dnsLeakRegistry.LiveObjects()
+}
 
 type Dns struct {
 	log            *logrus.Logger
@@ -152,6 +168,7 @@ func New(dns *config.Dns, opt *NewOption) (s *Dns, err error) {
 		// Immediately ready.
 		go func() { _ = opt.UpstreamReadyCallback(nil) }()
 	}
+	dnsLeakRegistry.Register(s, "dns.Dns")
 	return s, nil
 }
 

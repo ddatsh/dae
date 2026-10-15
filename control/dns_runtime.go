@@ -228,8 +228,24 @@ func (r *controlPlaneDNSRuntime) startPreparedDNSListener(ctx context.Context, d
 	return r.startPreparedDNSListenerWithWarmupTimeout(ctx, deferFuncs, stop, preparedDNSWarmupTimeout)
 }
 
+// clearPreparedDNSHooks drops any unconsumed prepared-DNS hooks. The hooks
+// close over the previous control-plane generation (controller/listener reuse
+// and listener stop callbacks), so leaving them set after the prepared cutover
+// has finished would pin the retired generation for the lifetime of the active
+// plane.
+func (r *controlPlaneDNSRuntime) clearPreparedDNSHooks() {
+	if r == nil {
+		return
+	}
+	r.preparedDNSReuseHook = nil
+	r.preparedDNSStartHook = nil
+}
+
 func (r *controlPlaneDNSRuntime) startPreparedDNSListenerWithWarmupTimeout(ctx context.Context, deferFuncs *[]func() error, stop func() error, warmupTimeout time.Duration) error {
 	if r == nil || !r.delayDNSListenerStart {
+		// The prepared flow is already complete (listener running or reused);
+		// nothing will ever consume the hooks on this runtime again.
+		r.clearPreparedDNSHooks()
 		return nil
 	}
 	if err := r.waitDNSUpstreamAvailable(ctx, warmupTimeout); err != nil {
@@ -241,6 +257,9 @@ func (r *controlPlaneDNSRuntime) startPreparedDNSListenerWithWarmupTimeout(ctx c
 		}
 		r.preparedDNSReuseHook = nil
 		if !r.delayDNSListenerStart {
+			// Full handoff: the previous listener (and its stop callback, which
+			// also targets the previous generation) is no longer needed.
+			r.clearPreparedDNSHooks()
 			return nil
 		}
 	}
