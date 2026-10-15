@@ -906,6 +906,7 @@ func NewControlPlaneWithContextOptions(
 		},
 	}
 	constructedPlane = plane
+	planeLeakRegistry.Register(plane, "ControlPlane")
 	SetFailedQuicDcidCache(plane.failedQuicDcidCache)
 	SetAnyfromSoMark(global.SoMarkFromDae)
 	plane.deferFuncs = append(plane.deferFuncs, plane.closePublishedListenerFiles)

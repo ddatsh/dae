@@ -92,6 +92,7 @@ func NewDNSListener(log *logrus.Logger, endpoint string, controller *ControlPlan
 		log:      log,
 		endpoint: e,
 	}
+	dnsListenerLeakRegistry.Register(ret, "NewDNSListener")
 	ret.controller.Store(controller)
 
 	return ret, nil

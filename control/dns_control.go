@@ -134,6 +134,16 @@ type dnsControllerStore struct {
 	dnsForwardersClosed atomic.Bool
 	sf                  singleflight.Group
 
+	// log backs the store-owned background goroutines (DNS cache janitor,
+	// async BPF update worker) so those goroutines capture the shared store
+	// instead of a generation facade. Capturing a facade would pin one
+	// ~32-byte DnsController forever per started goroutine (invisible to
+	// data-path leak scans). The daemon builds exactly one logrus.Logger and
+	// mutates it in place on reload, so the construction-time pointer stays
+	// valid across generations. May be nil (some test paths); every reader
+	// branches on nil.
+	log *logrus.Logger
+
 	janitorStop  chan struct{}
 	janitorDone  chan struct{}
 	lruScratchMu sync.Mutex
@@ -204,7 +214,6 @@ type DnsController struct {
 
 	concurrencyLimiter chan struct{}
 
-	dnsForwarderIdleTTL time.Duration
 	// log is assigned only at construction (NewDnsController) and never
 	// rewritten afterwards, so lock-free readers are race-free. Reloads keep
 	// it valid without reassignment: the daemon builds exactly one
@@ -219,13 +228,15 @@ type DnsController struct {
 }
 
 func newDnsControllerStore() *dnsControllerStore {
-	return &dnsControllerStore{
+	store := &dnsControllerStore{
 		dnsCache:          sync.Map{},
 		dnsForwarderCache: sync.Map{},
 		janitorStop:       make(chan struct{}),
 		janitorDone:       make(chan struct{}),
 		prefWaitRegistry:  newPreferenceWaitRegistry(),
 	}
+	dnsStoreLeakRegistry.Register(store, "newDnsControllerStore")
+	return store
 }
 
 func (c *DnsController) requireStore() *dnsControllerStore {
@@ -258,11 +269,17 @@ func (c *DnsController) sharedStoreFacade() *DnsController {
 	}
 	store := c.requireStore()
 	facade := &DnsController{
-		dnsControllerStore:  store,
-		concurrencyLimiter:  c.concurrencyLimiter,
-		dnsForwarderIdleTTL: c.dnsForwarderIdleTTL,
-		log:                 c.log,
+		dnsControllerStore: store,
+		concurrencyLimiter: c.concurrencyLimiter,
+		log:                c.log,
 	}
+	if store.log == nil {
+		// Backfill for stores created outside NewDnsController (lazy
+		// ensureStoreForReload, test helpers): the store-owned goroutines
+		// read the log through the store, not through a facade.
+		store.log = c.log
+	}
+	dnsControllerLeakRegistry.Register(facade, "sharedStoreFacade")
 	return facade
 }
 
@@ -306,15 +323,18 @@ func NewDnsController(routing *dns.Dns, option *DnsControllerOption) (c *DnsCont
 	}
 
 	controller := &DnsController{
-		dnsControllerStore:  newDnsControllerStore(),
-		concurrencyLimiter:  make(chan struct{}, limit),
-		log:                 option.Log,
-		dnsForwarderIdleTTL: dnsForwarderIdleTTL, // Use package-level default
+		dnsControllerStore: newDnsControllerStore(),
+		concurrencyLimiter: make(chan struct{}, limit),
+		log:                option.Log,
 	}
+	// The store-owned goroutines (janitor, BPF worker) log through the store;
+	// both handles are the process-global logger and are never reassigned.
+	controller.dnsControllerStore.log = option.Log
 	if err := controller.TryUpdateRuntime(option, routing); err != nil {
 		return nil, err
 	}
 	controller.startDnsCacheJanitor()
+	dnsControllerLeakRegistry.Register(controller, "NewDnsController")
 	return controller, nil
 }
 
