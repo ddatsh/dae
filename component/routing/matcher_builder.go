@@ -43,7 +43,7 @@ func (b *RulesBuilder) RegisterFunctionParser(funcName string, parser FunctionPa
 
 func (b *RulesBuilder) Apply(rules []*config_parser.RoutingRule) (err error) {
 	for _, rule := range rules {
-		b.log.Debugln("[rule]", rule.String(true, false, false))
+		//b.log.Debugln("[rule]", rule.String(true, false, false))
 		outbound, err := ParseOutbound(&rule.Outbound)
 		if err != nil {
 			return err
@@ -74,11 +74,13 @@ func (b *RulesBuilder) Apply(rules []*config_parser.RoutingRule) (err error) {
 
 				{
 					// Debug
+					/*
 					symNot := ""
 					if f.Not {
 						symNot = "!"
 					}
 					b.log.Debugf("\t%v%v(%v) -> %v", symNot, f.Name, key, overrideOutbound.Name)
+					*/
 				}
 
 				if err = functionParser(b.log, f, key, paramValueGroup, overrideOutbound); err != nil {

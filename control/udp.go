@@ -300,10 +300,11 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 	// - IPv6->IPv4: Convert writeAddr to IPv4-mapped IPv6 for dual-stack socket
 	// - IPv4->IPv6: Convert bindAddr to IPv4-mapped IPv6 to create IPv6 socket
 	bindAddr, writeAddr := normalizeSendPktAddrFamily(from, realTo)
-	traceEnabled := log != nil && log.IsLevelEnabled(logrus.TraceLevel)
+	//traceEnabled := log != nil && log.IsLevelEnabled(logrus.TraceLevel)
 	debugEnabled := log != nil && log.IsLevelEnabled(logrus.DebugLevel)
 	errorEnabled := log != nil && log.IsLevelEnabled(logrus.ErrorLevel)
 
+	/*
 	if traceEnabled {
 		log.WithFields(logrus.Fields{
 			"from":       from.String(),
@@ -313,6 +314,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 			"data_size":  len(data),
 		}).Trace("sendPkt: preparing to send UDP packet")
 	}
+	*/
 
 	// Try cached socket first (for Symmetric NAT sessions)
 	if slot != nil {
@@ -327,6 +329,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 				}
 			} else {
 				if _, err = cached.WriteToUDPAddrPort(data, writeAddr); err == nil {
+					/*
 					if traceEnabled {
 						log.WithFields(logrus.Fields{
 							"to":         realTo.String(),
@@ -334,6 +337,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 							"cached":     true,
 						}).Trace("sendPkt: sent via cached socket")
 					}
+					*/
 					return nil
 				}
 				// Cached socket is stale or broken; clear the cache slot immediately
@@ -361,6 +365,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 				}
 			} else {
 				if _, err = cached.WriteToUDPAddrPort(data, writeAddr); err == nil {
+					/*
 					if traceEnabled {
 						log.WithFields(logrus.Fields{
 							"to":         realTo.String(),
@@ -369,6 +374,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 							"cache_kind": "bind_addr",
 						}).Trace("sendPkt: sent via bind-address cached socket")
 					}
+					*/
 					return nil
 				}
 				cache.ClearCachedResponseConn(bindAddr, cached)
@@ -382,7 +388,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 		}
 	}
 
-	uConn, isNew, err := DefaultAnyfromPool.getOrCreateWithMark(bindAddr, soMark)
+	uConn, _, err := DefaultAnyfromPool.getOrCreateWithMark(bindAddr, soMark)
 	if err != nil {
 		if tryRawUDPFallback(log, data, from, realTo, soMark, debugEnabled, errorEnabled, "get-or-create", err) {
 			return nil
@@ -400,12 +406,14 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 		}
 		return err
 	}
+	/*
 	if traceEnabled {
 		log.WithFields(logrus.Fields{
 			"bind_addr":  bindAddr.String(),
 			"new_socket": isNew,
 		}).Trace("sendPkt: got socket from pool")
 	}
+	*/
 
 	_, err = uConn.WriteToUDPAddrPort(data, writeAddr)
 	if err != nil {
@@ -422,6 +430,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 		return err
 	}
 
+	/*
 	if traceEnabled {
 		log.WithFields(logrus.Fields{
 			"to":         realTo.String(),
@@ -429,6 +438,7 @@ func sendPktWithResponseConnSlot(log *logrus.Logger, data []byte, from netip.Add
 			"data_size":  len(data),
 		}).Trace("sendPkt: successfully sent packet")
 	}
+	*/
 
 	// Update caller's cached socket so future calls skip the pool lookup
 	if slot != nil && err == nil {
@@ -740,6 +750,7 @@ func (c *ControlPlane) handlePktOwned(data []byte, src, realDst netip.AddrPort, 
 				// based on the actual forwarding state (QUIC needs longer timeout)
 				ue.UpdateNatTimeout(QuicNatTimeout)
 
+				/*
 				if c.log.IsLevelEnabled(logrus.TraceLevel) {
 					fields := logrus.Fields{
 						"network":  "udp(fp)",
@@ -755,6 +766,7 @@ func (c *ControlPlane) handlePktOwned(data []byte, src, realDst netip.AddrPort, 
 					}
 					c.log.WithFields(fields).Tracef("%v <-> %v", RefineSourceToShow(realSrc, realDst.Addr()), dialTarget)
 				}
+				*/
 
 				ue.TrackUdpConnStateTuplePair(realSrc, realDst)
 				_, err = ue.WriteTo(data, dialTarget)
@@ -769,6 +781,7 @@ func (c *ControlPlane) handlePktOwned(data []byte, src, realDst netip.AddrPort, 
 					// Transient write failure: drop the datagram, keep the session.
 					return nil
 				}
+				/*
 				if c.log.IsLevelEnabled(logrus.DebugLevel) {
 					c.log.WithFields(logrus.Fields{
 						"to":      realDst.String(),
@@ -782,6 +795,7 @@ func (c *ControlPlane) handlePktOwned(data []byte, src, realDst netip.AddrPort, 
 						"err":     err.Error(),
 					}).Debugln("Failed to write UDP fast-path packet. Remove stale endpoint and rebuild.")
 				}
+				*/
 				if c.shouldPenalizeUdpEndpointWriteError(err) {
 					if lifecycle, ok := newUdpSessionLifecycleContext(ue, ""); ok {
 						lifecycle.reportUnavailable(fmt.Errorf("udp endpoint write failed: %w", err))
@@ -1163,6 +1177,7 @@ getNew:
 				packetIndex++
 				continue
 			}
+			/*
 			if c.log.IsLevelEnabled(logrus.DebugLevel) {
 				c.log.WithFields(logrus.Fields{
 					"to":      realDst.String(),
@@ -1178,6 +1193,7 @@ getNew:
 					"packet":  packetIndex,
 				}).Debugln("Failed to write UDP packet request. Try to remove old UDP endpoint and retry.")
 			}
+			*/
 			if c.shouldPenalizeUdpEndpointWriteError(err) {
 				if lifecycle, ok := newUdpSessionLifecycleContext(ue, ""); ok {
 					lifecycle.reportUnavailable(fmt.Errorf("udp endpoint write failed: %w", err))
