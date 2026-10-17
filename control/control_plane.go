@@ -171,6 +171,13 @@ type ControlPlaneBuildOptions struct {
 	DirectDialer          netproxy.Dialer
 	FullconeDirectDialer  netproxy.Dialer
 	SystemDNSResolver     *netutils.SystemDNSResolver
+	PreparedDaeDNSRouter  *daedns.Router
+	DaeDNSRouterPrepared  bool
+	// LocationFinder shares the caller's asset-locator instance so DNS and
+	// routing builds resolve geoip/geosite paths through one cache instead of
+	// re-statting the search dirs per stage. When nil, a generation-local
+	// finder is created from externGeoDataDirs.
+	LocationFinder *assets.LocationFinder
 }
 
 var (
@@ -574,7 +581,10 @@ func NewControlPlaneWithContextOptions(
 		systemDNSResolver = netutils.NewSystemDNSResolver(netip.MustParseAddrPort(global.FallbackResolver))
 	}
 
-	locationFinder := assets.NewLocationFinder(externGeoDataDirs)
+	locationFinder := buildOpts.LocationFinder
+	if locationFinder == nil {
+		locationFinder = assets.NewLocationFinder(externGeoDataDirs)
+	}
 	option := dialer.NewGlobalOption(global, log)
 	option.SetRuntimeDependencies(directDialer, fullconeDirectDialer, systemDNSResolver)
 
@@ -606,12 +616,16 @@ func NewControlPlaneWithContextOptions(
 		return netip.Addr{}, fmt.Errorf("no address for %q", host)
 	})
 
-	option.DaeDNS, err = daedns.NewWithOption(log, global, dnsConfig, &daedns.NewOption{
-		LocationFinder: locationFinder,
-		DirectDialer:   directDialer,
-	})
-	if err != nil {
-		return nil, err
+	if buildOpts.DaeDNSRouterPrepared {
+		option.DaeDNS = buildOpts.PreparedDaeDNSRouter
+	} else {
+		option.DaeDNS, err = daedns.NewWithOption(log, global, dnsConfig, &daedns.NewOption{
+			LocationFinder: locationFinder,
+			DirectDialer:   directDialer,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	if option.DaeDNS != nil {
 		deferFuncs = append(deferFuncs, option.DaeDNS.Close)
@@ -906,6 +920,7 @@ func NewControlPlaneWithContextOptions(
 	dnsUpstream, err := dns.New(dnsConfig, &dns.NewOption{
 		Logger:                  log,
 		LocationFinder:          locationFinder,
+		PreparedRequestMatcher:  option.DaeDNS.RequestMatcher(),
 		UpstreamReadyCallback:   plane.dnsUpstreamReadyCallback,
 		UpstreamResolverNetwork: common.MagicNetwork("udp", global.SoMarkFromDae, global.Mptcp),
 		UpstreamHostResolver:    upstreamHostResolver,
