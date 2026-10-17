@@ -67,7 +67,7 @@ func (s *SysctlManager) startWatch() {
 				return
 			}
 			if event.Has(fsnotify.Write) {
-				s.log.Tracef("sysctl write event: %+v", event)
+				//s.log.Tracef("sysctl write event: %+v", event)
 				s.mux.Lock()
 				expected, ok := s.expectations[event.Name]
 				s.mux.Unlock()

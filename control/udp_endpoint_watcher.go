@@ -61,9 +61,11 @@ func (ue *UdpEndpoint) startTransportReceiver() bool {
 		ue.stopPacketReceiver()
 	}
 
+	/*
 	if ue.log != nil && ue.log.IsLevelEnabled(logrus.DebugLevel) {
 		ue.log.Debug("[UdpEndpoint] Using transport-owned packet receiver")
 	}
+	*/
 	return true
 }
 
@@ -237,6 +239,7 @@ func (ue *UdpEndpoint) handleReceivedPacket(packet *netproxy.ReceivedPacket) boo
 }
 
 func (ue *UdpEndpoint) startReadLoop() {
+	/*
 	if ue.log != nil && ue.log.IsLevelEnabled(logrus.DebugLevel) {
 		ue.log.WithFields(logrus.Fields{
 			"lAddr":      ue.lAddr.String(),
@@ -244,6 +247,7 @@ func (ue *UdpEndpoint) startReadLoop() {
 			"proxy_addr": ue.DialTarget,
 		}).Debug("[UdpEndpoint] Read loop started")
 	}
+	*/
 
 	// Async reply dispatch keeps slow sendPkt operations off the blocking read
 	// loop: the bounded replyCh channel decouples the sender goroutine from

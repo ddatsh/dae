@@ -19,6 +19,7 @@ import (
 	"github.com/daeuniverse/dae/common/netutils"
 	"github.com/daeuniverse/dae/component/dns"
 	"github.com/daeuniverse/dae/component/outbound/dialer"
+	"github.com/daeuniverse/dae/pkg/cache"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -496,17 +497,15 @@ func (c *DnsController) serveFromRespCacheWithRefresh_(dnsMessage *dnsmessage.Ms
 	if c.log.IsLevelEnabled(logrus.DebugLevel) && len(dnsMessage.Question) > 0 {
 		q := dnsMessage.Question[0]
 		l := c.log.WithFields(logrus.Fields{
-			"_qname": strings.ToLower(q.Name),
-			"qtype":  QtypeToString(q.Qtype),
+			"upstream": upstream.Hostname,
+			"prefix":   "dns:hit",
 		})
 		if req != nil {
 			l = l.WithFields(logrus.Fields{
-				"network": "udp(dns)",
-				"source":  RefineSourceToShow(req.realSrc, req.realDst.Addr()),
-				"dest":    RefineAddrPortToShow(req.realDst),
+				"source": RefineSourceToShow(req.realSrc, req.realDst.Addr()),
 			})
 		}
-		l.Debug("cache hit")
+		l.Debug(strings.TrimSuffix(q.Name, ".") + "(" + QtypeToString(q.Qtype) + ")")
 	}
 	return true, nil
 }
@@ -675,12 +674,15 @@ func (c *DnsController) resolveDNSUpstream(
 	}
 	switch upstreamIndex {
 	case consts.DnsResponseOutboundIndex_Accept:
+		qname := respMsg.Question[0].Name
+		qType := QtypeToString(respMsg.Question[0].Qtype)
 		// Accept.
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
-				"question": respMsg.Question,
-				"upstream": upstreamName,
-			}).Traceln("Accept")
+				"src":      cache.Name(req.realSrc.Addr().String()),
+				"upstream": upstream.Hostname,
+				"prefix":   "dns:accept",
+			}).Traceln(strings.TrimSuffix(qname, ".") + "(" + qType + ")")
 		}
 	case consts.DnsResponseOutboundIndex_Reject:
 		// Reject the request with empty answer.
@@ -688,7 +690,7 @@ func (c *DnsController) resolveDNSUpstream(
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
 				"question": respMsg.Question,
-				"upstream": upstreamName,
+				"upstream": upstream.Hostname,
 			}).Traceln("Reject with empty answer")
 		}
 		// We also cache response reject.

@@ -8,7 +8,9 @@ package control
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 
+	"github.com/daeuniverse/dae/pkg/cache"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -270,11 +272,18 @@ func (c *DnsController) sendDnsErrorResponse_(
 	dnsMessage.RecursionAvailable = true
 	dnsMessage.Truncated = truncated
 	dnsMessage.Compress = true
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
-		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
-		}).Traceln(traceMsg)
+	qName := dnsMessage.Question[0].Name
+	qType := QtypeToString(dnsMessage.Question[0].Qtype)
+	// reject log
+	if cache.NotExists(traceMsg + qName + qType) {
+		if c.log.IsLevelEnabled(logrus.TraceLevel) {
+			c.log.WithFields(logrus.Fields{
+				"prefix": "dns:" + traceMsg,
+				"src":    cache.Name(req.realSrc.Addr().String()),
+			}).Trace(strings.TrimSuffix(qName, ".") + "(" + qType + ")")
+		}
 	}
+
 	if responseWriter != nil {
 		return responseWriter.WriteMsg(dnsMessage)
 	}
@@ -307,7 +316,7 @@ func (c *DnsController) sendDnsTruncatedResponse_(dnsMessage *dnsmessage.Msg, re
 
 // sendRejectWithResponseWriter_ send empty answer.
 func (c *DnsController) sendRejectWithResponseWriter_(dnsMessage *dnsmessage.Msg, req *udpRequest, responseWriter dnsmessage.ResponseWriter) (err error) {
-	return c.sendDnsErrorResponse_(dnsMessage, dnsmessage.RcodeSuccess, false, "Reject", req, responseWriter)
+	return c.sendDnsErrorResponse_(dnsMessage, dnsmessage.RcodeSuccess, false, "reject", req, responseWriter)
 }
 
 // notifyPreferenceWait releases any query that is waiting out the RFC 8305
@@ -406,10 +415,10 @@ func (c *DnsController) applyPreferenceWait(respMsg *dnsmessage.Msg) *dnsmessage
 	// arrive before this non-preferred answer is released.
 	if wait := c.prefWaitRegistry.registerWait(qname, q.Qtype, qtypePrefer); wait != nil {
 		// Non-preferred response arrived before preferred - wait briefly for preferred
-		if c.log.IsLevelEnabled(logrus.TraceLevel) {
+		/*if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.Tracef("Non-preferred %v response for %v, waiting %v for preferred %v",
 				QtypeToString(q.Qtype), qname, PreferenceResolutionDelay, QtypeToString(qtypePrefer))
-		}
+		}*/
 
 		// Wait for preferred response or timeout
 		preferred, preferredHasRecords := wait.waitFor()
@@ -431,10 +440,10 @@ func (c *DnsController) applyPreferenceWait(respMsg *dnsmessage.Msg) *dnsmessage
 			// The preferred family has records, so the non-preferred answer
 			// must not be delivered.
 			if filtered := c.filterNonPreferredResponse(qname, respMsg); filtered != nil {
-				if c.log.IsLevelEnabled(logrus.TraceLevel) {
+				/*if c.log.IsLevelEnabled(logrus.TraceLevel) {
 					c.log.Tracef("Preferred %v response with records for %v is known; answering the %v query with an empty reply",
 						QtypeToString(qtypePrefer), qname, QtypeToString(q.Qtype))
-				}
+				}*/
 				return filtered
 			}
 		}
