@@ -289,7 +289,7 @@ func (o *DatReaderOptimizer) loadGeoSite(filename string, code string) (params [
 		o.Logger.Debugf("Failed to read geosite \"%v:%v\": %v", filename, code, err)
 		return nil, err
 	}
-	o.Logger.Debugf("Read geosite \"%v:%v\" from %v", filename, code, filePath)
+	//o.Logger.Debugf("Read geosite \"%v:%v\" from %v", filename, code, filePath)
 	code, attr, _ := strings.Cut(code, "@")
 	// Direct wire-format decode: avoids building the protobuf object tree,
 	// which was the dominant allocation source for large geosite files.
@@ -358,7 +358,7 @@ func (o *DatReaderOptimizer) loadGeoIp(filename string, code string) (params []*
 		o.Logger.Debugf("Failed to read geoip \"%v:%v\": %v", filename, code, err)
 		return nil, err
 	}
-	o.Logger.Debugf("Read geoip \"%v:%v\" from %v", filename, code, filePath)
+	//o.Logger.Debugf("Read geoip \"%v:%v\" from %v", filename, code, filePath)
 	geoIp, err := geodata.UnmarshalGeoIp(o.Logger, filePath, code)
 	if err != nil {
 		return nil, err

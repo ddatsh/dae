@@ -615,7 +615,7 @@ func (c *controlPlaneCore) startIfindexWatcher() {
 			case <-c.closed.Done():
 				return
 			default:
-				c.log.Debug("ifindex watcher LinkSubscribe:", err)
+				// c.log.Debug("ifindex watcher LinkSubscribe:", err)
 			}
 		},
 		ListExisting: true,
