@@ -19,6 +19,13 @@ const (
 	RequestRuleCategorySub
 	RequestRuleCategoryNode
 	RequestRuleCategorySubNode
+	// RequestRuleCategoryUpstreamFilter holds rules that reference
+	// upstream(name). Such a rule is not a plain routing rule: upstream(name)
+	// matches the outbound that the upstream-free request rules (and the
+	// fallback) would choose, so these rules are evaluated after the base
+	// decision is known and can re-route or reject requests destined to a
+	// specific upstream.
+	RequestRuleCategoryUpstreamFilter
 )
 
 func SplitRequestRules(
@@ -28,12 +35,13 @@ func SplitRequestRules(
 	subRules []*config_parser.RoutingRule,
 	nodeRules []*config_parser.RoutingRule,
 	subNodeRules []*config_parser.RoutingRule,
+	upstreamFilterRules []*config_parser.RoutingRule,
 	err error,
 ) {
 	for _, rule := range rules {
 		category, classifyErr := classifyRequestRule(rule)
 		if classifyErr != nil {
-			return nil, nil, nil, nil, classifyErr
+			return nil, nil, nil, nil, nil, classifyErr
 		}
 		switch category {
 		case RequestRuleCategoryDNS:
@@ -44,11 +52,13 @@ func SplitRequestRules(
 			nodeRules = append(nodeRules, rule)
 		case RequestRuleCategorySubNode:
 			subNodeRules = append(subNodeRules, rule)
+		case RequestRuleCategoryUpstreamFilter:
+			upstreamFilterRules = append(upstreamFilterRules, rule)
 		default:
-			return nil, nil, nil, nil, fmt.Errorf("unknown request rule category: %v", category)
+			return nil, nil, nil, nil, nil, fmt.Errorf("unknown request rule category: %v", category)
 		}
 	}
-	return dnsRules, subRules, nodeRules, subNodeRules, nil
+	return dnsRules, subRules, nodeRules, subNodeRules, upstreamFilterRules, nil
 }
 
 func classifyRequestRule(rule *config_parser.RoutingRule) (RequestRuleCategory, error) {
@@ -60,7 +70,7 @@ func classifyRequestRule(rule *config_parser.RoutingRule) (RequestRuleCategory, 
 		internalCategory RequestRuleCategory
 		hasInternal      bool
 		hasDNS           bool
-		otherFunction    string
+		hasUpstream      bool
 	)
 	for _, f := range rule.AndFunctions {
 		switch f.Name {
@@ -70,13 +80,20 @@ func classifyRequestRule(rule *config_parser.RoutingRule) (RequestRuleCategory, 
 					consts.Function_QName, consts.Function_QType, rule.String(false, false, false))
 			}
 			hasDNS = true
+		case consts.Function_Upstream:
+			if hasInternal {
+				return 0, fmt.Errorf("cannot mix %q with internal dae DNS selectors in one rule: %v",
+					consts.Function_Upstream, rule.String(false, false, false))
+			}
+			hasUpstream = true
 		case "sub":
 			if hasDNS {
 				return 0, fmt.Errorf("cannot mix %q/%q with internal dae DNS selectors in one rule: %v",
 					consts.Function_QName, consts.Function_QType, rule.String(false, false, false))
 			}
-			if otherFunction != "" {
-				return 0, fmt.Errorf("cannot mix internal dae DNS selectors with %q in one rule: %v", otherFunction, rule.String(false, false, false))
+			if hasUpstream {
+				return 0, fmt.Errorf("cannot mix %q with internal dae DNS selectors in one rule: %v",
+					consts.Function_Upstream, rule.String(false, false, false))
 			}
 			if !hasInternal {
 				internalCategory = RequestRuleCategorySub
@@ -89,8 +106,9 @@ func classifyRequestRule(rule *config_parser.RoutingRule) (RequestRuleCategory, 
 				return 0, fmt.Errorf("cannot mix %q/%q with internal dae DNS selectors in one rule: %v",
 					consts.Function_QName, consts.Function_QType, rule.String(false, false, false))
 			}
-			if otherFunction != "" {
-				return 0, fmt.Errorf("cannot mix internal dae DNS selectors with %q in one rule: %v", otherFunction, rule.String(false, false, false))
+			if hasUpstream {
+				return 0, fmt.Errorf("cannot mix %q with internal dae DNS selectors in one rule: %v",
+					consts.Function_Upstream, rule.String(false, false, false))
 			}
 			if !hasInternal {
 				internalCategory = RequestRuleCategoryNode
@@ -103,8 +121,9 @@ func classifyRequestRule(rule *config_parser.RoutingRule) (RequestRuleCategory, 
 				return 0, fmt.Errorf("cannot mix %q/%q with internal dae DNS selectors in one rule: %v",
 					consts.Function_QName, consts.Function_QType, rule.String(false, false, false))
 			}
-			if otherFunction != "" {
-				return 0, fmt.Errorf("cannot mix internal dae DNS selectors with %q in one rule: %v", otherFunction, rule.String(false, false, false))
+			if hasUpstream {
+				return 0, fmt.Errorf("cannot mix %q with internal dae DNS selectors in one rule: %v",
+					consts.Function_Upstream, rule.String(false, false, false))
 			}
 			if !hasInternal {
 				internalCategory = RequestRuleCategorySubNode
@@ -116,12 +135,18 @@ func classifyRequestRule(rule *config_parser.RoutingRule) (RequestRuleCategory, 
 			if hasInternal {
 				return 0, fmt.Errorf("cannot mix internal dae DNS selectors with %q in one rule: %v", f.Name, rule.String(false, false, false))
 			}
-			otherFunction = f.Name
+			if hasUpstream {
+				return 0, fmt.Errorf("cannot mix %q with %q in one rule: %v",
+					consts.Function_Upstream, f.Name, rule.String(false, false, false))
+			}
 		}
 	}
 
 	if hasInternal {
 		return internalCategory, nil
+	}
+	if hasUpstream {
+		return RequestRuleCategoryUpstreamFilter, nil
 	}
 	return RequestRuleCategoryDNS, nil
 }

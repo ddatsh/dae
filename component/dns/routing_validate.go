@@ -84,6 +84,18 @@ func ValidateRouting(log *logrus.Logger, dnsCfg *config.Dns, externGeoDataDirs [
 	if _, err = requestBuilder.Build(); err != nil {
 		return err
 	}
+	// Same filter compilation dns.New performs for rules that reference
+	// upstream(name): an unknown upstream name must fail validate and run
+	// alike.
+	if len(requestProgram.UpstreamFilterRules) > 0 {
+		filterBuilder, err := NewUpstreamFilterMatcherFromRules(log, requestProgram.UpstreamFilterRules, upstreamName2Id(dnsCfg))
+		if err != nil {
+			return err
+		}
+		if _, err = filterBuilder.Build(); err != nil {
+			return err
+		}
+	}
 
 	responseProgram, err := routing.NewNormalizedProgram(
 		dnsCfg.Routing.Response.Rules, dnsCfg.Routing.Response.Fallback,
