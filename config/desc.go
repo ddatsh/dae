@@ -69,6 +69,7 @@ var DnsDesc = Desc{
 	"upstream":         "Value can be scheme://host:port, where the scheme can be tcp/udp/tcp+udp.\nIf host is a domain and has both IPv4 and IPv6 record, dae will automatically choose IPv4 or IPv6 to use according to group policy (such as min latency policy).\nPlease make sure DNS traffic will go through and be forwarded by dae, which is REQUIRED for domain routing.\nIf dial_mode is \"ip\", the upstream DNS answer SHOULD NOT be polluted, so domestic public DNS is not recommended.",
 	"request": `DNS request routing for ordinary client traffic uses qname and qtype.
 Built-in outbounds for ordinary DNS requests: asis, reject.
+The upstream function is also available: it matches the outbound that the other request rules (and the fallback) chose, so a rule containing upstream is evaluated after the base decision and can re-route or reject requests destined to a specific upstream. It must point to names defined in dns.upstream, supports qname/qtype combination (e.g. qtype(aaaa, https) && upstream(mydns) -> reject), and cannot be mixed with the internal selectors below.
 Additional internal dae selectors are available in the same request block:
 sub matches subscription fetch requests.
 node matches node host resolution requests.

@@ -29,6 +29,10 @@ type Dns struct {
 	upstream       []*UpstreamResolver
 	upstream2Index sync.Map
 	reqMatcher     *RequestMatcher
+	// upstreamFilterMatcher re-routes or rejects requests after reqMatcher
+	// picked a target upstream (see UpstreamFilterMatcher). Nil when the
+	// request block has no upstream() filter rules.
+	upstreamFilterMatcher *UpstreamFilterMatcher
 	respMatcher    *ResponseMatcher
 }
 
@@ -39,6 +43,7 @@ type NewOption struct {
 	Logger                  *logrus.Logger
 	LocationFinder          *assets.LocationFinder
 	PreparedRequestMatcher  *RequestMatcher
+	UpstreamFilterMatcher   *UpstreamFilterMatcher
 	UpstreamReadyCallback   func(dnsUpstream *Upstream) (err error)
 	UpstreamResolverNetwork string
 	UpstreamHostResolver    func(ctx context.Context, host string, network string) (*netutils.Ip46, error, error)
@@ -120,8 +125,19 @@ func New(dns *config.Dns, opt *NewOption) (s *Dns, err error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to build DNS request routing: %w", err)
 		}
+		if len(requestProgram.UpstreamFilterRules) > 0 {
+			filterBuilder, err := NewUpstreamFilterMatcherFromRules(opt.Logger, requestProgram.UpstreamFilterRules, upstreamName2Id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build DNS request upstream-filter routing: %w", err)
+			}
+			s.upstreamFilterMatcher, err = filterBuilder.Build()
+			if err != nil {
+				return nil, fmt.Errorf("failed to build DNS request upstream-filter routing: %w", err)
+			}
+		}
 	} else {
 		s.reqMatcher = opt.PreparedRequestMatcher
+		s.upstreamFilterMatcher = opt.UpstreamFilterMatcher
 	}
 	// Parse response routing.
 	respMatcherBuilder, err := NewResponseMatcherBuilderFromProgram(opt.Logger, responseProgram, upstreamName2Id)
@@ -172,6 +188,13 @@ func (s *Dns) RequestSelect(ctx context.Context, qname string, qtype uint16) (up
 	upstreamIndex, err = s.reqMatcher.Match(qname, qtype)
 	if err != nil {
 		return 0, nil, err
+	}
+	// Re-route or reject requests destined to a specific upstream. The filter
+	// keeps the base decision when none of its rules hits.
+	if s.upstreamFilterMatcher != nil {
+		if upstreamIndex, err = s.upstreamFilterMatcher.Match(qname, qtype, upstreamIndex); err != nil {
+			return 0, nil, err
+		}
 	}
 	// nil indicates AsIs.
 	if upstreamIndex == consts.DnsRequestOutboundIndex_AsIs ||

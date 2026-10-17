@@ -30,7 +30,7 @@ func TestSplitRequestRulesSeparatesDNSAndInternalSelectors(t *testing.T) {
 		testFunction("subnode", testParam("subtag", "my_sub")),
 	)
 
-	dnsRules, subRules, nodeRules, subNodeRules, err := SplitRequestRules([]*config_parser.RoutingRule{
+	dnsRules, subRules, nodeRules, subNodeRules, upstreamFilterRules, err := SplitRequestRules([]*config_parser.RoutingRule{
 		dnsRule,
 		subRule,
 		nodeRule,
@@ -52,10 +52,50 @@ func TestSplitRequestRulesSeparatesDNSAndInternalSelectors(t *testing.T) {
 	if len(subNodeRules) != 1 || subNodeRules[0] != subNodeRule {
 		t.Fatalf("unexpected subnode rules: %#v", subNodeRules)
 	}
+	if len(upstreamFilterRules) != 0 {
+		t.Fatalf("unexpected upstream filter rules: %#v", upstreamFilterRules)
+	}
+}
+
+func TestSplitRequestRulesSeparatesUpstreamFilterRules(t *testing.T) {
+	filterRule := testRequestRule(
+		"reject",
+		testFunction("qtype", testParam("", "aaaa"), testParam("", "https")),
+		testFunction("upstream", testParam("", "remote")),
+	)
+
+	dnsRules, _, _, _, upstreamFilterRules, err := SplitRequestRules([]*config_parser.RoutingRule{
+		filterRule,
+	})
+	if err != nil {
+		t.Fatalf("SplitRequestRules() error = %v", err)
+	}
+	if len(dnsRules) != 0 {
+		t.Fatalf("upstream filter rule must not land in the base dns rules: %#v", dnsRules)
+	}
+	if len(upstreamFilterRules) != 1 || upstreamFilterRules[0] != filterRule {
+		t.Fatalf("unexpected upstream filter rules: %#v", upstreamFilterRules)
+	}
+}
+
+func TestSplitRequestRulesRejectsUpstreamWithInternalSelectors(t *testing.T) {
+	_, _, _, _, _, err := SplitRequestRules([]*config_parser.RoutingRule{
+		testRequestRule(
+			"alidns",
+			testFunction("upstream", testParam("", "remote")),
+			testFunction("sub", testParam("", "my_sub")),
+		),
+	})
+	if err == nil {
+		t.Fatal("expected mixed upstream/sub rule to fail")
+	}
+	if !strings.Contains(err.Error(), "cannot mix") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestSplitRequestRulesRejectsMixedDNSAndInternalSelectors(t *testing.T) {
-	_, _, _, _, err := SplitRequestRules([]*config_parser.RoutingRule{
+	_, _, _, _, _, err := SplitRequestRules([]*config_parser.RoutingRule{
 		testRequestRule(
 			"alidns",
 			testFunction("qname", testParam("suffix", "example.com")),
@@ -71,7 +111,7 @@ func TestSplitRequestRulesRejectsMixedDNSAndInternalSelectors(t *testing.T) {
 }
 
 func TestSplitRequestRulesRejectsMixedInternalSelectors(t *testing.T) {
-	_, _, _, _, err := SplitRequestRules([]*config_parser.RoutingRule{
+	_, _, _, _, _, err := SplitRequestRules([]*config_parser.RoutingRule{
 		testRequestRule(
 			"alidns",
 			testFunction("node", testParam("", "hk-01")),
