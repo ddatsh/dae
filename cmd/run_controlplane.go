@@ -83,6 +83,8 @@ func buildControlPlaneRuntime(
 	directDialer netproxy.Dialer,
 	fullconeDirectDialer netproxy.Dialer,
 	systemDNSResolver *netutils.SystemDNSResolver,
+	preparedDaeDNSRouter *daedns.Router,
+	locationFinder *assets.LocationFinder,
 	externGeoDataDirs []string,
 	prepareOnly bool,
 	dnsRoutingUnchanged bool,
@@ -110,6 +112,9 @@ func buildControlPlaneRuntime(
 			SystemDNSResolver:     systemDNSResolver,
 			NodeDisplayTags:       nodeDisplayTags,
 			RoutingTraceEnabled:   routingTrace,
+			PreparedDaeDNSRouter:  preparedDaeDNSRouter,
+			DaeDNSRouterPrepared:  true,
+			LocationFinder:        locationFinder,
 		},
 	)
 }
@@ -279,6 +284,13 @@ func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, d
 	if daeDNSRouter != nil {
 		defer func() { _ = daeDNSRouter.Close() }()
 	}
+
+	routerTransferred := false
+	defer func() {
+		if !routerTransferred && daeDNSRouter != nil {
+			_ = daeDNSRouter.Close()
+		}
+	}()
 
 	// Reused across phases; each stage resets it right before its work.
 	var stageStart time.Time
@@ -497,6 +509,8 @@ func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, d
 		directDialers.Symmetric,
 		directDialers.Fullcone,
 		systemDNSResolver,
+		daeDNSRouter,
+		locationFinder,
 		externGeoDataDirs,
 		prepareOnly,
 		dnsRoutingUnchanged,
@@ -527,6 +541,7 @@ func newControlPlaneWithMode(ctx context.Context, log *logrus.Logger, bpf any, d
 	} else {
 		publishSubscriptionHealth(subscriptionHealthUpdates)
 	}
+	routerTransferred = true
 	log.Infof("Control plane built in %v", time.Since(stageStart))
 	log.Infof("Total startup time: %v", time.Since(prof.StartTime()))
 	prof.Stop()
