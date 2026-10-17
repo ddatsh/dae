@@ -63,6 +63,13 @@ func (r *Router) selectUpstream(ctx context.Context, upstreamName, host string, 
 	if err != nil {
 		return nil, err
 	}
+	// The upstream(name) request filter applies to dae's own lookups the same
+	// way it applies to client traffic: keep the base decision on a miss.
+	if r.upstreamFilterMatcher != nil {
+		if upstreamIndex, err = r.upstreamFilterMatcher.Match(dnsmessage.CanonicalName(host), qtype, upstreamIndex); err != nil {
+			return nil, err
+		}
+	}
 	switch upstreamIndex {
 	case consts.DnsRequestOutboundIndex_AsIs, consts.DnsRequestOutboundIndex_Reject:
 		return nil, errPassthroughToBaseResolver

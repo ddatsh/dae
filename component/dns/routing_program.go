@@ -6,6 +6,8 @@
 package dns
 
 import (
+	"fmt"
+
 	"github.com/daeuniverse/dae/component/routing"
 	"github.com/daeuniverse/dae/config"
 	"github.com/daeuniverse/dae/pkg/config_parser"
@@ -17,6 +19,7 @@ import (
 // upstream initialization and callbacks belong to each consumer separately.
 type CompiledRequestRouting struct {
 	Matcher           *RequestMatcher
+	UpstreamFilterMatcher *UpstreamFilterMatcher
 	HasDNSRules       bool
 	SubscriptionRules []*config_parser.RoutingRule
 	NodeRules         []*config_parser.RoutingRule
@@ -32,10 +35,22 @@ func CompileRequestRouting(log *logrus.Logger, program *NormalizedRequestRouting
 	if err != nil {
 		return nil, err
 	}
+	var filterMatcher *UpstreamFilterMatcher
+	if len(program.UpstreamFilterRules) > 0 {
+		filterBuilder, err := NewUpstreamFilterMatcherFromRules(log, program.UpstreamFilterRules, upstreamName2Id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build DNS request upstream-filter routing: %w", err)
+		}
+		filterMatcher, err = filterBuilder.Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build DNS request upstream-filter routing: %w", err)
+		}
+	}
 	// Do not retain the expanded DNS rules: their geosite parameter objects
 	// are build-only data and can dwarf the compiled matcher in memory.
 	return &CompiledRequestRouting{
 		Matcher:           matcher,
+		UpstreamFilterMatcher: filterMatcher,
 		HasDNSRules:       len(program.Rules) != 0,
 		SubscriptionRules: program.SubscriptionRules,
 		NodeRules:         program.NodeRules,
@@ -47,6 +62,7 @@ func CompileRequestRouting(log *logrus.Logger, program *NormalizedRequestRouting
 // optimizer application and internal-selector classification.
 type NormalizedRequestRoutingProgram struct {
 	routing.NormalizedProgram
+	UpstreamFilterRules []*config_parser.RoutingRule
 	SubscriptionRules []*config_parser.RoutingRule
 	NodeRules         []*config_parser.RoutingRule
 	SubNodeRules      []*config_parser.RoutingRule
@@ -69,7 +85,7 @@ func NewNormalizedRequestRoutingProgram(
 	} else {
 		normalizedRules = routing.DeepCloneRules(rules)
 	}
-	dnsRules, subRules, nodeRules, subNodeRules, err := SplitRequestRules(normalizedRules)
+	dnsRules, subRules, nodeRules, subNodeRules, upstreamFilterRules, err := SplitRequestRules(normalizedRules)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +94,7 @@ func NewNormalizedRequestRoutingProgram(
 			Rules:    dnsRules,
 			Fallback: fallback,
 		},
+		UpstreamFilterRules: upstreamFilterRules,
 		SubscriptionRules: subRules,
 		NodeRules:         nodeRules,
 		SubNodeRules:      subNodeRules,

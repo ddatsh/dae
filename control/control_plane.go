@@ -925,6 +925,7 @@ func NewControlPlaneWithContextOptions(
 		Logger:                  log,
 		LocationFinder:          locationFinder,
 		PreparedRequestMatcher:  option.DaeDNS.RequestMatcher(),
+		UpstreamFilterMatcher:   option.DaeDNS.UpstreamFilterMatcher(),
 		UpstreamReadyCallback:   plane.dnsUpstreamReadyCallback,
 		UpstreamResolverNetwork: common.MagicNetwork("udp", global.SoMarkFromDae, global.Mptcp),
 		UpstreamHostResolver:    upstreamHostResolver,
