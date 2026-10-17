@@ -38,7 +38,7 @@ func purgeFiltersOnParent(log *logrus.Logger, link netlink.Link, parent uint32) 
 		// dae uses major handles 0x2022 and 0x2023 for its TC filters.
 		major := f.Attrs().Handle >> 16
 		if major == 0x2022 || major == 0x2023 {
-			log.Infof("purging stale TC filter from %s (handle: %#x)", link.Attrs().Name, f.Attrs().Handle)
+			//log.Infof("purging stale TC filter from %s (handle: %#x)", link.Attrs().Name, f.Attrs().Handle)
 			if err := netlink.FilterDel(f); err != nil {
 				log.Warnf("failed to delete stale TC filter from %s: %v", link.Attrs().Name, err)
 			}

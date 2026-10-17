@@ -722,6 +722,7 @@ func (d *Dialer) aliveBackground() {
 			return d.HttpCheck(ctx, IdxTcp4, opt.Url, opt.Ip4, opt.Method, tcpSomark, mptcp)
 		},
 	}
+	/*
 	tcp6CheckOpt := &CheckOption{
 		networkType: &NetworkType{
 			L4Proto:   consts.L4ProtoStr_TCP,
@@ -744,6 +745,7 @@ func (d *Dialer) aliveBackground() {
 			return d.HttpCheck(ctx, IdxTcp6, opt.Url, opt.Ip6, opt.Method, tcpSomark, mptcp)
 		},
 	}
+	*/
 	tcpNetwork := netproxy.MagicNetwork{
 		Network: "tcp",
 		Mark:    d.CheckDnsOptionRaw.Somark,
@@ -786,6 +788,7 @@ func (d *Dialer) aliveBackground() {
 		},
 		CheckFunc: makeDnsCheckFunc(func(o *CheckDnsOption) netip.Addr { return o.Ip4 }, &udpNetwork),
 	}
+	/*
 	udp6CheckDnsOpt := &CheckOption{
 		networkType: &NetworkType{
 			L4Proto:         consts.L4ProtoStr_UDP,
@@ -795,7 +798,8 @@ func (d *Dialer) aliveBackground() {
 		},
 		CheckFunc: makeDnsCheckFunc(func(o *CheckDnsOption) netip.Addr { return o.Ip6 }, &udpNetwork),
 	}
-	var CheckOpts = []*CheckOption{tcp4CheckOpt, tcp6CheckOpt, udp4CheckDnsOpt, udp6CheckDnsOpt}
+	*/
+	var CheckOpts = []*CheckOption{tcp4CheckOpt, udp4CheckDnsOpt}
 	if d.CheckDnsTcp {
 		// TCP DNS legs. dns.upstream entries may carry the tcp scheme
 		// ("tcp://8.8.8.8:53", and tcp+udp's TCP fallback), and desc.go states
@@ -833,6 +837,7 @@ func (d *Dialer) aliveBackground() {
 			CheckFunc: makeDnsCheckFunc(func(o *CheckDnsOption) netip.Addr { return o.Ip4 }, &tcpNetwork),
 			Advisory:  true,
 		}
+		/*
 		tcp6CheckDnsOpt := &CheckOption{
 			networkType: &NetworkType{
 				L4Proto:   consts.L4ProtoStr_TCP,
@@ -842,7 +847,8 @@ func (d *Dialer) aliveBackground() {
 			CheckFunc: makeDnsCheckFunc(func(o *CheckDnsOption) netip.Addr { return o.Ip6 }, &tcpNetwork),
 			Advisory:  true,
 		}
-		CheckOpts = append(CheckOpts, tcp4CheckDnsOpt, tcp6CheckDnsOpt)
+		*/
+		CheckOpts = append(CheckOpts, tcp4CheckDnsOpt)
 	}
 
 	var unusedOnce bool
@@ -1495,9 +1501,9 @@ func (d *Dialer) check(opts *CheckOption, isResuscitation bool, cycle *cycleResu
 		}
 		if isResuscitation {
 			d.Log.WithFields(fields).Infof("%s resuscitated by emergency probe", strings.ToUpper(string(opts.networkType.L4Proto)))
-		} else {
+		} /*else {
 			d.Log.WithFields(fields).Debugln("Connectivity Check")
-		}
+		}*/
 		d.informDialerGroupUpdate(update)
 	case err != nil && !d.isLifecycleTeardownError(err) && !stderrors.Is(err, errCheckOptionUnavailable):
 		d.collectionFineMu.Lock()
@@ -1567,7 +1573,7 @@ func (d *Dialer) logAdvisoryProbeResult(opt *CheckOption, ok bool, err error, la
 	wasOK := opt.advisoryOK.Swap(ok)
 	switch {
 	case ok && (first || wasOK):
-		d.Log.WithFields(fields).Debugln("Advisory probe")
+		//d.Log.WithFields(fields).Debugln("Advisory probe")
 	case ok:
 		d.Log.WithFields(fields).Info("Advisory probe recovered")
 	case wasOK || first:
