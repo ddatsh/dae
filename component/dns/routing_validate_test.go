@@ -60,6 +60,15 @@ func TestValidateRoutingMatchesRunPath(t *testing.T) {
 		if _, err = requestBuilder.Build(); err != nil {
 			return err
 		}
+		if len(requestProgram.UpstreamFilterRules) > 0 {
+			filterBuilder, err := NewUpstreamFilterMatcherFromRules(log, requestProgram.UpstreamFilterRules, named)
+			if err != nil {
+				return err
+			}
+			if _, err = filterBuilder.Build(); err != nil {
+				return err
+			}
+		}
 
 		responseProgram, err := routing.NewNormalizedProgram(
 			dnsCfg.Routing.Response.Rules, dnsCfg.Routing.Response.Fallback,
@@ -125,6 +134,21 @@ func TestValidateRoutingMatchesRunPath(t *testing.T) {
 		},
 		"request fallback asis": {
 			body: upstreams + " routing {\n  request {\n   fallback: asis\n  }\n }",
+		},
+		"request upstream filter legal": {
+			body: upstreams + " routing {\n  request {\n   qtype(aaaa, https) && upstream(alidns) -> reject\n   fallback: googledns\n  }\n }",
+		},
+		"request upstream filter undefined upstream": {
+			body:    upstreams + " routing {\n  request {\n   qtype(aaaa) && upstream(nosuchupstream) -> reject\n   fallback: alidns\n  }\n }",
+			wantErr: true,
+		},
+		"request upstream filter bad outbound": {
+			body:    upstreams + " routing {\n  request {\n   qtype(aaaa) && upstream(alidns) -> nosuchupstream\n   fallback: alidns\n  }\n }",
+			wantErr: true,
+		},
+		"request upstream filter with internal selector": {
+			body:    upstreams + " routing {\n  request {\n   upstream(alidns) && sub(my_sub) -> reject\n   fallback: alidns\n  }\n }",
+			wantErr: true,
 		},
 		"unknown function": {
 			body:    upstreams + " routing {\n  request {\n   qtypes(a) -> alidns\n   fallback: alidns\n  }\n }",
