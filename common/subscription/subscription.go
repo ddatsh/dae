@@ -44,7 +44,7 @@ type sip008Server struct {
 }
 
 func ResolveSubscriptionAsBase64(log *logrus.Logger, b []byte) (nodes []string) {
-	log.Debugln("Try to resolve as base64")
+	//log.Debugln("Try to resolve as base64")
 
 	// base64 decode
 	raw, e := common.Base64StdDecode(string(b))
@@ -69,7 +69,7 @@ func ResolveSubscriptionAsBase64(log *logrus.Logger, b []byte) (nodes []string) 
 }
 
 func ResolveSubscriptionAsSIP008(log *logrus.Logger, b []byte) (nodes []string, err error) {
-	log.Debugln("Try to resolve as sip008")
+	//log.Debugln("Try to resolve as sip008")
 
 	var sip sip008
 	err = json.Unmarshal(b, &sip)
@@ -220,7 +220,7 @@ resolve:
 			return "", nil, fmt.Errorf("subscription resolved to 0 nodes")
 		}
 	} else {
-		log.Debugln(err)
+		//log.Debugln(err)
 		nodes = ResolveSubscriptionAsBase64(log, b)
 		if len(nodes) == 0 {
 			return "", nil, fmt.Errorf("subscription resolved to 0 nodes")

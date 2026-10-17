@@ -677,12 +677,14 @@ func (c *DnsController) resolveDNSUpstream(
 	switch upstreamIndex {
 	case consts.DnsResponseOutboundIndex_Accept:
 		// Accept.
+		/*
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
 				"question": respMsg.Question,
 				"upstream": upstreamName,
 			}).Traceln("Accept")
 		}
+		*/
 	case consts.DnsResponseOutboundIndex_Reject:
 		// Reject the request with empty answer.
 		respMsg.Answer = nil

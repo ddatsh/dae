@@ -45,7 +45,7 @@ func logOffloadSkipRateLimited(l *logrus.Logger, reason string) {
 		return
 	}
 	offloadSkipLogAt[reason] = now
-	l.Debugf("Skip TCP relay eBPF offload: %s", reason)
+	//l.Debugf("Skip TCP relay eBPF offload: %s", reason)
 }
 
 const (
@@ -352,12 +352,14 @@ func relayEstablishedTCPFlow(
 		return fmt.Errorf("handleTCP relay error: %w", err)
 	}
 
+	/*
 	if log != nil && log.IsLevelEnabled(logrus.DebugLevel) {
 		log.WithFields(logrus.Fields{
 			"src": src.String(),
 			"dst": dst.String(),
 		}).Debug("TCP relay completed")
 	}
+	*/
 
 	return nil
 }
