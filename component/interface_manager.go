@@ -49,7 +49,7 @@ func NewInterfaceManager(log *logrus.Logger) *InterfaceManager {
 			case <-closed.Done():
 				return
 			default:
-				log.Debug("LinkSubscribe:", err)
+				//log.Debug("LinkSubscribe:", err)
 			}
 		},
 		ListExisting: true,

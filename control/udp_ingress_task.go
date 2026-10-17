@@ -288,14 +288,14 @@ func (t *udpIngressTask) Run() {
 					}
 					return
 				}
-			} else if handler.log.IsLevelEnabled(logrus.TraceLevel) {
+			}/*else if handler.log.IsLevelEnabled(logrus.TraceLevel) {
 				// Success logging for DNS fast path (trace level only)
 				handler.log.WithFields(logrus.Fields{
 					"src":      convergeSrc.String(),
 					"dst":      realDst.String(),
 					"question": dnsMessage.Question,
 				}).Trace("DNS ingress fast path handled successfully")
-			}
+			}*/
 			return
 		}
 	}
