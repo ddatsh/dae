@@ -82,7 +82,7 @@ func TestReloadDNSCachePolicyBoundary(t *testing.T) {
 			answer, err := dnsmessage.NewRR("reload-policy.test. 300 IN A 198.51.100.11")
 			require.NoError(t, err)
 			response.Answer = []dnsmessage.RR{answer}
-			require.NoError(t, old.NormalizeAndCacheDnsResp_(response, key))
+			require.NoError(t, old.NormalizeAndCacheDnsResp_(response, key, nil))
 
 			for _, staged := range []bool{false, true} {
 				name := "snapshot"

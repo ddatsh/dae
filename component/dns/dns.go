@@ -73,6 +73,7 @@ func New(dns *config.Dns, opt *NewOption) (s *Dns, err error) {
 			Raw:         u,
 			Network:     opt.UpstreamResolverNetwork,
 			ResolveIp46: opt.UpstreamHostResolver,
+			Name:        tag,
 			FinishInitCallback: func(i int) func(raw *url.URL, upstream *Upstream) (err error) {
 				return func(raw *url.URL, upstream *Upstream) (err error) {
 					if opt.UpstreamReadyCallback != nil { // Redundant comparison 'opt != nil' removed
