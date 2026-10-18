@@ -57,7 +57,7 @@ func TestPositiveEntryLifetimeUsesMinimumRecordTtl(t *testing.T) {
 		},
 	}
 	msg.Response = true
-	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey, nil); err != nil {
 		t.Fatalf("NormalizeAndCacheDnsResp_: %v", err)
 	}
 	entry := storedEntry(t, c, cacheKey)
@@ -89,7 +89,7 @@ func TestNodataNegativeLifetimeUsesSoa(t *testing.T) {
 			Minttl:  10,
 		},
 	}
-	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey, nil); err != nil {
 		t.Fatalf("NormalizeAndCacheDnsResp_: %v", err)
 	}
 	entry := storedEntry(t, c, cacheKey)
@@ -145,7 +145,7 @@ func TestNodataLifetimeBoundsRetainedRecordTtls(t *testing.T) {
 
 			const cacheKey = "semantics-nodata-record-ttl"
 			before := time.Now()
-			if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey); err != nil {
+			if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey, nil); err != nil {
 				t.Fatal(err)
 			}
 			after := time.Now()
@@ -206,7 +206,7 @@ func TestCnameOnlyNodataUsesSoaNegativeLifetime(t *testing.T) {
 
 	const cacheKey = "semantics-cname-nodata"
 	before := time.Now()
-	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey, nil); err != nil {
 		t.Fatal(err)
 	}
 	after := time.Now()
@@ -248,7 +248,7 @@ func TestCnameOnlyWithoutSoaIsNotCached(t *testing.T) {
 		Target: "empty.example.com.",
 	}}
 	const cacheKey = "semantics-cname-nodata-nosoa"
-	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := c.dnsCache.Load(cacheKey); ok {
@@ -270,7 +270,7 @@ func TestCnameQueryAnswerStaysPositive(t *testing.T) {
 
 	const cacheKey = "semantics-cname-positive"
 	before := time.Now()
-	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey, nil); err != nil {
 		t.Fatal(err)
 	}
 	after := time.Now()
@@ -302,7 +302,7 @@ func TestCnameChainWithRequestedTypeStaysPositive(t *testing.T) {
 
 	const cacheKey = "semantics-cname-chain"
 	before := time.Now()
-	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey, nil); err != nil {
 		t.Fatal(err)
 	}
 	after := time.Now()
@@ -324,7 +324,7 @@ func TestUncacheableNegativesAreNotStored(t *testing.T) {
 	nx.SetQuestion("gone.example.com.", dnsmessage.TypeA)
 	nx.Response = true
 	nx.Rcode = dnsmessage.RcodeNameError
-	if err := c.NormalizeAndCacheDnsResp_(nx, "semantics-nx"); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(nx, "semantics-nx", nil); err != nil {
 		t.Fatalf("NormalizeAndCacheDnsResp_(nx): %v", err)
 	}
 	if _, ok := c.dnsCache.Load("semantics-nx"); ok {
@@ -335,7 +335,7 @@ func TestUncacheableNegativesAreNotStored(t *testing.T) {
 	noSoa := new(dnsmessage.Msg)
 	noSoa.SetQuestion("empty-no-soa.example.com.", dnsmessage.TypeA)
 	noSoa.Response = true
-	if err := c.NormalizeAndCacheDnsResp_(noSoa, "semantics-no-soa"); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(noSoa, "semantics-no-soa", nil); err != nil {
 		t.Fatalf("NormalizeAndCacheDnsResp_(no-soa): %v", err)
 	}
 	if _, ok := c.dnsCache.Load("semantics-no-soa"); ok {
@@ -352,7 +352,7 @@ func TestUncacheableNegativesAreNotStored(t *testing.T) {
 			Ns:  "ns1.other.example.",
 		},
 	}
-	if err := c.NormalizeAndCacheDnsResp_(referral, "semantics-referral"); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(referral, "semantics-referral", nil); err != nil {
 		t.Fatalf("NormalizeAndCacheDnsResp_(referral): %v", err)
 	}
 	if _, ok := c.dnsCache.Load("semantics-referral"); ok {
@@ -552,7 +552,7 @@ func TestAnyQueryAnswerRemainsPositive(t *testing.T) {
 
 	const cacheKey = "semantics-any"
 	before := time.Now()
-	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey); err != nil {
+	if err := c.NormalizeAndCacheDnsResp_(msg, cacheKey, nil); err != nil {
 		t.Fatal(err)
 	}
 	after := time.Now()
@@ -593,7 +593,7 @@ func TestMailaAnswersRemainPositive(t *testing.T) {
 			msg.Response = true
 			msg.Answer = []dnsmessage.RR{tc.rr}
 
-			if err := c.NormalizeAndCacheDnsResp_(msg, "semantics-maila-"+tc.name); err != nil {
+			if err := c.NormalizeAndCacheDnsResp_(msg, "semantics-maila-"+tc.name, nil); err != nil {
 				t.Fatal(err)
 			}
 			storedEntry(t, c, "semantics-maila-"+tc.name)

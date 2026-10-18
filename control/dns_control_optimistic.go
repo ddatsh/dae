@@ -145,11 +145,11 @@ func (c *DnsController) refreshDnsRespCache(ctx context.Context, request *dnsmes
 		// NOERROR/NXDOMAIN as refreshed). SOA-carrying NODATA replaces the
 		// entry through the normal negative-cache path (RFC 2308); other
 		// negatives remove the superseded expired entry.
-		if err := c.NormalizeAndCacheDnsResp_(response, cacheKey); err != nil {
+		if err := c.NormalizeAndCacheDnsResp_(response, cacheKey, upstream); err != nil {
 			return err
 		}
 		c.evictSupersededExpiredPositive(cacheKey)
 		return nil
 	}
-	return c.NormalizeAndCacheDnsResp_(response, cacheKey)
+	return c.NormalizeAndCacheDnsResp_(response, cacheKey, upstream)
 }

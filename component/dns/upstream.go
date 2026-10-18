@@ -89,6 +89,10 @@ type Upstream struct {
 	Hostname string
 	Port     uint16
 	Path     string
+	// Name is the tag this upstream was configured under in dns.upstream
+	// (e.g. "local" or "remote"). It is empty for synthesized upstreams
+	// (as-is) and for values built outside the config path.
+	Name string
 	*netutils.Ip46
 }
 
@@ -161,6 +165,9 @@ type UpstreamResolver struct {
 	Raw         *url.URL
 	Network     string
 	ResolveIp46 resolveUpstreamIp46Func
+	// Name is the configured tag of this resolver, propagated onto every
+	// initialized Upstream (see Upstream.Name).
+	Name string
 	// FinishInitCallback may be invoked again if err is not nil
 	FinishInitCallback func(raw *url.URL, upstream *Upstream) (err error)
 
@@ -236,6 +243,7 @@ func (u *UpstreamResolver) initUpstream(ctx context.Context) (*Upstream, error) 
 		u.state.Store(&errorSentinel)
 		return nil, fmt.Errorf("failed to init dns upstream: %w", err)
 	}
+	upstream.Name = u.Name
 
 	// Call finish callback if set
 	if u.FinishInitCallback != nil {

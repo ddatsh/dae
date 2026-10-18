@@ -366,6 +366,7 @@ func (r *Router) initUpstreams(rawUpstreams []config.KeyableString) error {
 			Raw:         u,
 			Network:     common.MagicNetwork("udp", r.soMark, r.mptcp),
 			ResolveIp46: resolveIp46,
+			Name:        tag,
 		}
 		r.upstreamByIndex = append(r.upstreamByIndex, r.upstreams[tag])
 	}
