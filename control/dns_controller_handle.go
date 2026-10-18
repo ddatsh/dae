@@ -538,7 +538,7 @@ func (c *DnsController) resolveForSingleflight(
 	respMsg := resolution.response
 	respMsg.Id = dnsMessage.Id
 	respMsg.Compress = true
-	if err := c.storeResolvedResponse(respMsg, responseCacheKey, resolutionEpoch); err != nil {
+	if err := c.storeResolvedResponse(respMsg, responseCacheKey, resolutionEpoch,upstream); err != nil {
 		c.noteDnsCacheStoreFailure("controller response", err)
 	}
 	return respMsg, nil

@@ -153,13 +153,13 @@ func (c *DnsController) refreshDnsRespCache(ctx context.Context, request *dnsmes
 		// NOERROR/NXDOMAIN as refreshed). SOA-carrying NODATA replaces the
 		// entry through the normal negative-cache path (RFC 2308); other
 		// negatives remove the superseded expired entry.
-		if err := c.storeRefreshedResponse(response, cacheKey, refreshEpoch); err != nil {
+		if err := c.storeRefreshedResponse(response, cacheKey, refreshEpoch,upstream); err != nil {
 			return err
 		}
 		c.evictSupersededExpiredPositive(cacheKey)
 		return nil
 	}
-	return c.storeRefreshedResponse(response, cacheKey, refreshEpoch)
+	return c.storeRefreshedResponse(response, cacheKey, refreshEpoch,upstream)
 }
 
 // cacheEpochSnapshot captures the current cache-invalidation epoch. Callers
@@ -178,17 +178,18 @@ func (c *DnsController) cacheEpochSnapshot() uint64 {
 // invalidated the cache while the exchange was in flight. The check and the
 // store share cacheMutationMu, so a delete cannot land between them and then be
 // overwritten by this resolution.
-func (c *DnsController) storeResolvedResponse(response *dnsmessage.Msg, cacheKey string, resolutionEpoch uint64) error {
+func (c *DnsController) storeResolvedResponse(response *dnsmessage.Msg, cacheKey string, resolutionEpoch uint64,upstream *dns.Upstream) error {
 	c.cacheMutationMu.Lock()
 	defer c.cacheMutationMu.Unlock()
 	if resolutionEpoch != c.cacheEpoch {
 		return nil
 	}
-	return c.NormalizeAndCacheDnsResp_(response, cacheKey)
+	return c.NormalizeAndCacheDnsResp_(response, cacheKey, upstream)
+
 }
 
 // storeRefreshedResponse is storeResolvedResponse for the background-refresh
 // path, which already carries the epoch it captured before resolving.
-func (c *DnsController) storeRefreshedResponse(response *dnsmessage.Msg, cacheKey string, refreshEpoch uint64) error {
-	return c.storeResolvedResponse(response, cacheKey, refreshEpoch)
+func (c *DnsController) storeRefreshedResponse(response *dnsmessage.Msg, cacheKey string, refreshEpoch uint64,upstream *dns.Upstream) error {
+	return c.storeResolvedResponse(response, cacheKey, refreshEpoch,upstream)
 }
