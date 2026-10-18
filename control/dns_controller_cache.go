@@ -1164,7 +1164,7 @@ func typeMatchesQuestion(rrtype, qtype uint16) bool {
 }
 
 // NormalizeAndCacheDnsResp_ handle DNS resp in place.
-func (c *DnsController) NormalizeAndCacheDnsResp_(msg *dnsmessage.Msg, responseCacheKey string) (err error) {
+func (c *DnsController) NormalizeAndCacheDnsResp_(msg *dnsmessage.Msg, responseCacheKey string, upstream *dns.Upstream) (err error) {
 	if !msg.Response || len(msg.Question) == 0 {
 		return nil
 	}
@@ -1195,7 +1195,7 @@ func (c *DnsController) NormalizeAndCacheDnsResp_(msg *dnsmessage.Msg, responseC
 			}
 			// Store the SOA in the authority section so replayed NODATA
 			// responses carry the negative proof with a decreasing TTL.
-			return c.updateDnsCache(msg, responseCacheKey, ttl, &q)
+			return c.updateDnsCache(msg, responseCacheKey, ttl, &q, upstream)
 		}
 		// NXDOMAIN (and other non-success RCODEs) are not stored; see above.
 		// Background refresh treats an accepted NXDOMAIN as superseding an
@@ -1225,7 +1225,7 @@ func (c *DnsController) NormalizeAndCacheDnsResp_(msg *dnsmessage.Msg, responseC
 	// and the stale window, not by suppressing downstream caching.
 
 	// Update DnsCache.
-	return c.updateDnsCache(msg, responseCacheKey, ttl, &q)
+	return c.updateDnsCache(msg, responseCacheKey, ttl, &q, upstream)
 }
 
 // dnsCacheStoreFailureLogInterval paces the failed-cache-store warning. A
@@ -1256,7 +1256,7 @@ func (c *DnsController) noteDnsCacheStoreFailure(site string, err error) {
 	}
 }
 
-func (c *DnsController) updateDnsCache(msg *dnsmessage.Msg, responseCacheKey string, ttl uint32, q *dnsmessage.Question) error {
+func (c *DnsController) updateDnsCache(msg *dnsmessage.Msg, responseCacheKey string, ttl uint32, q *dnsmessage.Question,upstream *dns.Upstream) error {
 	// Update DnsCache.
 	if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		c.log.WithFields(logrus.Fields{
