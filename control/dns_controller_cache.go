@@ -15,6 +15,8 @@ import (
 
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/component/dns"
+	"github.com/daeuniverse/dae/pkg/cache"
+	"github.com/mgutz/ansi"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -1171,7 +1173,11 @@ func typeMatchesQuestion(rrtype, qtype uint16) bool {
 }
 
 // NormalizeAndCacheDnsResp_ handle DNS resp in place.
-func (c *DnsController) NormalizeAndCacheDnsResp_(msg *dnsmessage.Msg, responseCacheKey string, upstream *dns.Upstream) (err error) {
+func (c *DnsController) NormalizeAndCacheDnsResp_(msg *dnsmessage.Msg, responseCacheKey string, upstream *dns.Upstream, source ...string) (err error) {
+	var src string
+	if len(source) > 0 {
+		src = source[0]
+	}
 	if !msg.Response || len(msg.Question) == 0 {
 		return nil
 	}
@@ -1202,7 +1208,7 @@ func (c *DnsController) NormalizeAndCacheDnsResp_(msg *dnsmessage.Msg, responseC
 			}
 			// Store the SOA in the authority section so replayed NODATA
 			// responses carry the negative proof with a decreasing TTL.
-			return c.updateDnsCache(msg, responseCacheKey, ttl, &q, upstream)
+			return c.updateDnsCache(msg, responseCacheKey, ttl, &q, upstream, src)
 		}
 		// NXDOMAIN (and other non-success RCODEs) are not stored; see above.
 		// Background refresh treats an accepted NXDOMAIN as superseding an
@@ -1232,7 +1238,7 @@ func (c *DnsController) NormalizeAndCacheDnsResp_(msg *dnsmessage.Msg, responseC
 	// and the stale window, not by suppressing downstream caching.
 
 	// Update DnsCache.
-	return c.updateDnsCache(msg, responseCacheKey, ttl, &q, upstream)
+	return c.updateDnsCache(msg, responseCacheKey, ttl, &q, upstream, src)
 }
 
 // dnsCacheStoreFailureLogInterval paces the failed-cache-store warning. A
@@ -1263,20 +1269,30 @@ func (c *DnsController) noteDnsCacheStoreFailure(site string, err error) {
 	}
 }
 
-func (c *DnsController) updateDnsCache(msg *dnsmessage.Msg, responseCacheKey string, ttl uint32, q *dnsmessage.Question,upstream *dns.Upstream) error {
+func (c *DnsController) updateDnsCache(msg *dnsmessage.Msg, responseCacheKey string, ttl uint32, q *dnsmessage.Question, upstream *dns.Upstream, src string) error {
 	// Update DnsCache.
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
-		c.log.WithFields(logrus.Fields{
-			"_qname": q.Name,
-			"rcode":  msg.Rcode,
-			"ans":    FormatDnsRsc(msg.Answer),
-		}).Tracef("Update DNS record cache")
+	if msg.Answer != nil {
+		if c.log.IsLevelEnabled(logrus.TraceLevel) {
+			c.log.WithFields(logrus.Fields{
+				"prefix":   ansi.Color("dns:cache", "blue+h"),
+				"upstream": upstream.Name,
+				"source":   cache.Name(src),
+				"ans":      FormatDnsRsc(msg.Answer),
+			}).Trace(strings.TrimSuffix(q.Name, ".") + "(" + QtypeToString(q.Qtype) + ")")
+		}
 	}
 
 	if err := c.UpdateDnsCacheTtlWithKey(responseCacheKey, q.Name, q.Qtype, msg.Answer, msg.Ns, msg.Extra, int(ttl)); err != nil {
 		return err
 	}
 	return nil
+}
+
+func dnsCacheSource(req *udpRequest) string {
+	if req == nil {
+		return ""
+	}
+	return req.realSrc.Addr().String()
 }
 
 type deadlineFunc func(now time.Time, host string) (deadline time.Time, originalDeadline time.Time)

@@ -194,7 +194,7 @@ func (r *bpfMaintenanceRuntime) readEvents() {
 			// Unknown types cannot be acted on, but they must not be dropped
 			// in silence: kernel events and this binary ship together, so an
 			// unknown type means the ABI drifted.
-			logrus.Debugf("ignoring unknown datapath event type %d", ev.Type)
+			//logrus.Debugf("ignoring unknown datapath event type %d", ev.Type)
 		}
 	}
 }

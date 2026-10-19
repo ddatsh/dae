@@ -19,7 +19,9 @@ import (
 	ob "github.com/daeuniverse/dae/component/outbound"
 	"github.com/daeuniverse/dae/component/outbound/dialer"
 	"github.com/daeuniverse/dae/component/sniffing"
+	"github.com/daeuniverse/dae/pkg/cache"
 	"github.com/daeuniverse/outbound/pool"
+	"github.com/mgutz/ansi"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
@@ -1223,18 +1225,39 @@ getNew:
 	// Reused endpoints (QUIC/BT) stay silent even at Debug to avoid
 	// exploding logs. Raise log_level to debug to restore new-flow traces.
 	if isNew && c.log.IsLevelEnabled(logrus.DebugLevel) {
-		c.log.WithFields(logrus.Fields{
-			"network":  networkType.StringWithoutDns(),
-			"outbound": ue.Outbound.Name,
-			"policy":   ue.Outbound.GetSelectionPolicy(),
-			"dialer":   ue.Dialer.Property().Name,
-			"sniffed":  domain,
-			"ip":       RefineAddrPortToShow(realDst),
-			"pid":      routingResult.Pid,
-			"dscp":     routingResult.Dscp,
-			"pname":    ProcessName2String(routingResult.Pname[:]),
-			"mac":      Mac2String(routingResult.Mac[:]),
-		}).Debugf("%v <-> %v", RefineSourceToShow(realSrc, realDst.Addr()), dialTarget)
+		rst := RefineSourceToShow(realSrc, realDst.Addr())
+		pid := routingResult.Pid
+		dscp := routingResult.Dscp
+		pname := ProcessName2String(routingResult.Pname[:])
+		rapt := RefineAddrPortToShow(realDst)
+		network := networkType.StringWithoutDns()
+		if cache.NotExistsWithTTL(network+dialTarget, 10*time.Second) {
+			fields := logrus.Fields{
+				"network": network,
+				"dialer":  ue.Dialer.Property().Name,
+				"source":  rst,
+				"prefix":  ansi.Color("access", "green"),
+			}
+
+			if pid != 0 {
+				fields["pid"] = pid
+			}
+			if dscp != 0 {
+				fields["dscp"] = dscp
+			}
+			if pname != "" {
+				fields["pname"] = pname
+			}
+			if realDst.Addr().String() != rapt {
+				fields["ip"] = rapt
+			}
+			if domain != "" {
+				if !strings.HasPrefix(dialTarget, domain) {
+					fields["sniffed"] = domain
+				}
+			}
+			c.log.WithFields(fields).Infof("%v <-> %v", rst, dialTarget)
+		}
 	}
 
 	return nil
