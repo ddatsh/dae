@@ -94,7 +94,7 @@ var (
 	// the 2-minute value; sessions still idle longer are reaped by the pool
 	// janitor, and the eBPF conn-state backstop (UDP_CONN_STATE_TIMEOUT_NS)
 	// must stay aligned with this constant.
-	QuicNatTimeout = 5 * time.Minute
+	QuicNatTimeout = 1 * time.Minute
 )
 
 const (
