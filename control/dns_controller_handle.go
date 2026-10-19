@@ -19,6 +19,8 @@ import (
 	"github.com/daeuniverse/dae/common/netutils"
 	"github.com/daeuniverse/dae/component/dns"
 	"github.com/daeuniverse/dae/component/outbound/dialer"
+	"github.com/daeuniverse/dae/pkg/cache"
+	"github.com/mgutz/ansi"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -496,18 +498,20 @@ func (c *DnsController) serveFromRespCacheWithRefresh_(dnsMessage *dnsmessage.Ms
 	}
 	if c.log.IsLevelEnabled(logrus.DebugLevel) && len(dnsMessage.Question) > 0 {
 		q := dnsMessage.Question[0]
-		l := c.log.WithFields(logrus.Fields{
-			"_qname": strings.ToLower(q.Name),
-			"qtype":  QtypeToString(q.Qtype),
-		})
-		if req != nil {
-			l = l.WithFields(logrus.Fields{
-				"network": "udp(dns)",
-				"source":  RefineSourceToShow(req.realSrc, req.realDst.Addr()),
-				"dest":    RefineAddrPortToShow(req.realDst),
+		qname := q.Name
+		qType := QtypeToString(q.Qtype)
+		if cache.NotExistsWithTTL(qname+qType, 10*time.Second) {
+			l := c.log.WithFields(logrus.Fields{
+				"prefix":   ansi.Color("dns:hit", "black+h"),
+				"upstream": upstream.Name,
 			})
+			if req != nil {
+				l = l.WithFields(logrus.Fields{
+					"source": RefineSourceToShow(req.realSrc, req.realDst.Addr()),
+				})
+			}
+			l.Trace(strings.TrimSuffix(q.Name, ".") + "(" + QtypeToString(q.Qtype) + ")")
 		}
-		l.Debug("cache hit")
 	}
 	return true, nil
 }
@@ -677,12 +681,14 @@ func (c *DnsController) resolveDNSUpstream(
 	switch upstreamIndex {
 	case consts.DnsResponseOutboundIndex_Accept:
 		// Accept.
+		/*
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
 			c.log.WithFields(logrus.Fields{
 				"question": respMsg.Question,
 				"upstream": upstreamName,
 			}).Traceln("Accept")
 		}
+		*/
 	case consts.DnsResponseOutboundIndex_Reject:
 		// Reject the request with empty answer.
 		respMsg.Answer = nil

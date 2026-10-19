@@ -15,6 +15,7 @@ import (
 
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/component/dns"
+	"github.com/mgutz/ansi"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -1091,6 +1092,7 @@ const dnsNegativeCacheMaxTtl = 3600
 // when any contained RR expires), so this bounds the entry deadline instead of
 // trusting the first answer record.
 func minRealRecordTtl(msg *dnsmessage.Msg) uint32 {
+	const minCacheTtl = 300
 	var minTtl uint32
 	first := true
 	consider := func(rrs []dnsmessage.RR) {
@@ -1111,6 +1113,10 @@ func minRealRecordTtl(msg *dnsmessage.Msg) uint32 {
 	if first {
 		return 0
 	}
+	if minTtl < minCacheTtl {
+		return minCacheTtl
+	}
+
 	return minTtl
 }
 
@@ -1262,10 +1268,10 @@ func (c *DnsController) updateDnsCache(msg *dnsmessage.Msg, responseCacheKey str
 	// Update DnsCache.
 	if c.log.IsLevelEnabled(logrus.TraceLevel) {
 		c.log.WithFields(logrus.Fields{
-			"_qname": q.Name,
-			"rcode":  msg.Rcode,
+			"prefix": ansi.Color("dns:cache","blue+h"),
+			"upstream": upstream.Name,
 			"ans":    FormatDnsRsc(msg.Answer),
-		}).Tracef("Update DNS record cache")
+		}).Trace(strings.TrimSuffix(q.Name, ".") + "(" + QtypeToString(q.Qtype) + ")")
 	}
 
 	if err := c.UpdateDnsCacheTtlWithKey(responseCacheKey, q.Name, q.Qtype, msg.Answer, msg.Ns, msg.Extra, int(ttl)); err != nil {

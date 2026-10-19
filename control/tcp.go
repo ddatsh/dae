@@ -14,6 +14,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,7 +24,9 @@ import (
 	daerrors "github.com/daeuniverse/dae/common/errors"
 	ob "github.com/daeuniverse/dae/component/outbound"
 	"github.com/daeuniverse/dae/component/sniffing"
+	"github.com/daeuniverse/dae/pkg/cache"
 	"github.com/daeuniverse/outbound/netproxy"
+	"github.com/mgutz/ansi"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -61,16 +64,30 @@ const (
 )
 
 func buildTCPLinkLogFields(res *proxyDialResult, dialParam *proxyDialParam, dst netip.AddrPort, domain string, annotateOffload bool, offloaded bool, offloadReason string) logrus.Fields {
+	rapt := RefineAddrPortToShow(dst)
+	pname := ProcessName2String(dialParam.ProcessName[:])
 	fields := logrus.Fields{
-		"network":  res.OrigNetworkType,
-		"outbound": res.Outbound.Name,
-		"policy":   res.Outbound.GetSelectionPolicy(),
-		"dialer":   res.Dialer.Property().Name,
-		"sniffed":  domain,
-		"ip":       RefineAddrPortToShow(dst),
-		"dscp":     dialParam.Dscp,
-		"pname":    ProcessName2String(dialParam.ProcessName[:]),
-		"mac":      Mac2String(dialParam.Mac[:]),
+		"network": res.OrigNetworkType,
+		"dialer":  res.Dialer.Property().Name,
+		"prefix":  ansi.Color("access", "green"),
+	}
+
+	if !res.IsDialIp {
+		fields["ip"] = rapt
+	}
+
+	if dialParam.Dscp != 0 {
+		fields["dscp"] = dialParam.Dscp
+	}
+
+	if pname != "" {
+		fields["pname"] = pname
+	}
+
+	if domain != "" {
+		if !strings.HasPrefix(res.DialTarget, domain) {
+			fields["sniffed"] = domain
+		}
 	}
 	if !annotateOffload {
 		return fields
@@ -317,8 +334,10 @@ func (c *ControlPlane) handleConnWithRoutingResultOwned(
 
 	// Per-flow routing traces are Debug: at Info they dominate CPU/allocs
 	// under high connection rates. Raise log_level to debug to restore them.
-	if c.log.IsLevelEnabled(logrus.DebugLevel) {
-		c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Debugf("%v <-> %v", RefineSourceToShow(src, dst.Addr()), res.DialTarget)
+	if cache.NotExistsWithTTL("tcp" + res.DialTarget,10*time.Second) {
+		if c.log.IsLevelEnabled(logrus.DebugLevel) {
+			c.log.WithFields(buildTCPLinkLogFields(res, dialParam, dst, domain, annotateOffload, offloaded, offloadReason)).Infof("%v <-> %v", RefineSourceToShow(src, dst.Addr()), res.DialTarget)
+		}
 	}
 
 	if offloaded {
