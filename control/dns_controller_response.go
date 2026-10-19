@@ -8,7 +8,10 @@ package control
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 
+	"github.com/daeuniverse/dae/pkg/cache"
+	"github.com/mgutz/ansi"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -270,11 +273,18 @@ func (c *DnsController) sendDnsErrorResponse_(
 	dnsMessage.RecursionAvailable = true
 	dnsMessage.Truncated = truncated
 	dnsMessage.Compress = true
-	if c.log.IsLevelEnabled(logrus.TraceLevel) {
-		c.log.WithFields(logrus.Fields{
-			"question": dnsMessage.Question,
-		}).Traceln(traceMsg)
+	qName := dnsMessage.Question[0].Name
+	qType := QtypeToString(dnsMessage.Question[0].Qtype)
+	// reject log
+	if cache.NotExists(traceMsg + qName + qType) {
+		if c.log.IsLevelEnabled(logrus.TraceLevel) {
+			c.log.WithFields(logrus.Fields{
+				"prefix": ansi.Color("dns:" + traceMsg,"red+h"),
+				"src":    cache.Name(req.realSrc.Addr().String()),
+			}).Trace(strings.TrimSuffix(qName, ".") + "(" + qType + ")")
+		}
 	}
+
 	if responseWriter != nil {
 		return responseWriter.WriteMsg(dnsMessage)
 	}
@@ -307,7 +317,7 @@ func (c *DnsController) sendDnsTruncatedResponse_(dnsMessage *dnsmessage.Msg, re
 
 // sendRejectWithResponseWriter_ send empty answer.
 func (c *DnsController) sendRejectWithResponseWriter_(dnsMessage *dnsmessage.Msg, req *udpRequest, responseWriter dnsmessage.ResponseWriter) (err error) {
-	return c.sendDnsErrorResponse_(dnsMessage, dnsmessage.RcodeSuccess, false, "Reject", req, responseWriter)
+	return c.sendDnsErrorResponse_(dnsMessage, dnsmessage.RcodeSuccess, false, "reject", req, responseWriter)
 }
 
 // notifyPreferenceWait releases any query that is waiting out the RFC 8305

@@ -556,7 +556,7 @@ func (c *DnsController) dialSend(
 		// For responseWriter path, cache synchronously because
 		// responseWriter may need the message after we return.
 
-		if err = c.storeResolvedResponse(respMsg, responseCacheKey, resolutionEpoch,upstream); err != nil {
+		if err = c.storeResolvedResponse(respMsg, responseCacheKey, resolutionEpoch,upstream,dnsCacheSource(req)); err != nil {
 			c.noteDnsCacheStoreFailure("response writer", err)
 		}
 		return responseWriter.WriteMsg(respMsg)
@@ -593,7 +593,7 @@ func (c *DnsController) dialSend(
 				c.log.Errorf("panic in async DNS cache: %v", r)
 			}
 		}()
-		if err := c.storeResolvedResponse(respMsg, responseCacheKey, resolutionEpoch,upstream); err != nil {
+		if err := c.storeResolvedResponse(respMsg, responseCacheKey, resolutionEpoch,upstream,dnsCacheSource(req)); err != nil {
 			c.noteDnsCacheStoreFailure("async after send", err)
 		}
 	}()

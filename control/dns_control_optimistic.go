@@ -178,18 +178,18 @@ func (c *DnsController) cacheEpochSnapshot() uint64 {
 // invalidated the cache while the exchange was in flight. The check and the
 // store share cacheMutationMu, so a delete cannot land between them and then be
 // overwritten by this resolution.
-func (c *DnsController) storeResolvedResponse(response *dnsmessage.Msg, cacheKey string, resolutionEpoch uint64,upstream *dns.Upstream) error {
+func (c *DnsController) storeResolvedResponse(response *dnsmessage.Msg, cacheKey string, resolutionEpoch uint64,upstream *dns.Upstream,source ...string) error {
 	c.cacheMutationMu.Lock()
 	defer c.cacheMutationMu.Unlock()
 	if resolutionEpoch != c.cacheEpoch {
 		return nil
 	}
-	return c.NormalizeAndCacheDnsResp_(response, cacheKey, upstream)
+	return c.NormalizeAndCacheDnsResp_(response, cacheKey, upstream,source...)
 
 }
 
 // storeRefreshedResponse is storeResolvedResponse for the background-refresh
 // path, which already carries the epoch it captured before resolving.
-func (c *DnsController) storeRefreshedResponse(response *dnsmessage.Msg, cacheKey string, refreshEpoch uint64,upstream *dns.Upstream) error {
-	return c.storeResolvedResponse(response, cacheKey, refreshEpoch,upstream)
+func (c *DnsController) storeRefreshedResponse(response *dnsmessage.Msg, cacheKey string, refreshEpoch uint64,upstream *dns.Upstream,source ...string) error {
+	return c.storeResolvedResponse(response, cacheKey, refreshEpoch,upstream,source...)
 }

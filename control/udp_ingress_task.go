@@ -275,7 +275,7 @@ func (t *udpIngressTask) Run() {
 					handler.log.WithFields(logrus.Fields{
 						"src":      convergeSrc.String(),
 						"dst":      realDst.String(),
-						"question": dnsMessage.Question,
+						"question": dnsMessage.Question[0].Name + "(" + QtypeToString(dnsMessage.Question[0].Qtype) + ")",
 						"error":    e.Error(),
 					}).Warn("DNS ingress fast path failed; sending SERVFAIL response")
 				}
