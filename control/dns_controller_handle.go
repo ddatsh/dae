@@ -12,15 +12,12 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strings"
 	"time"
 
 	"github.com/daeuniverse/dae/common/consts"
 	"github.com/daeuniverse/dae/common/netutils"
 	"github.com/daeuniverse/dae/component/dns"
 	"github.com/daeuniverse/dae/component/outbound/dialer"
-	"github.com/daeuniverse/dae/pkg/cache"
-	"github.com/mgutz/ansi"
 	dnsmessage "github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
 )
@@ -498,20 +495,11 @@ func (c *DnsController) serveFromRespCacheWithRefresh_(dnsMessage *dnsmessage.Ms
 	}
 	if c.log.IsLevelEnabled(logrus.DebugLevel) && len(dnsMessage.Question) > 0 {
 		q := dnsMessage.Question[0]
-		qname := q.Name
-		qType := QtypeToString(q.Qtype)
-		if cache.NotExistsWithTTL(qname+qType, 10*time.Second) {
-			l := c.log.WithFields(logrus.Fields{
-				"prefix":   ansi.Color("dns:hit", "black+h"),
-				"upstream": upstream.Name,
-			})
-			if req != nil {
-				l = l.WithFields(logrus.Fields{
-					"source": RefineSourceToShow(req.realSrc, req.realDst.Addr()),
-				})
-			}
-			l.Trace(strings.TrimSuffix(q.Name, ".") + "(" + QtypeToString(q.Qtype) + ")")
+		var source string
+		if req != nil {
+			source = RefineSourceToShow(req.realSrc, req.realDst.Addr())
 		}
+		traceDnsHit(c.log, q.Name, QtypeToString(q.Qtype), source, upstream.Name)
 	}
 	return true, nil
 }

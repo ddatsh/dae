@@ -278,10 +278,12 @@ func (c *DnsController) sendDnsErrorResponse_(
 	// reject log
 	if cache.NotExists(traceMsg + qName + qType) {
 		if c.log.IsLevelEnabled(logrus.TraceLevel) {
-			c.log.WithFields(logrus.Fields{
-				"prefix": ansi.Color("dns:" + traceMsg,"red+h"),
-				"src":    cache.Name(req.realSrc.Addr().String()),
-			}).Trace(strings.TrimSuffix(qName, ".") + "(" + qType + ")")
+			mergeDnsTrace(c.log, dnsTraceKey{
+				prefix: ansi.Color("dns:" + traceMsg, "red+h"),
+				qname:  strings.TrimSuffix(qName, "."),
+				field:  "src",
+				source: cache.Name(req.realSrc.Addr().String()),
+			}, qType)
 		}
 	}
 
