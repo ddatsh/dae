@@ -440,7 +440,7 @@ func (c *controlPlaneCore) setupTCPRelayOffload() error {
 const tcpRelayOffloadAccountTarget = "skb_send_sock"
 
 func tcpOffloadKprobeFallbackSupported(goarch string) bool {
-	return goarch == "amd64"
+	return goarch == "amd64" || goarch == "arm64"
 }
 
 // bindWan supports lazy-bind if interface `ifname` is not found.
