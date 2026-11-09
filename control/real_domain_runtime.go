@@ -38,8 +38,11 @@ type controlPlaneRealDomainRuntime struct {
 func newControlPlaneRealDomainRuntime() controlPlaneRealDomainRuntime {
 	return controlPlaneRealDomainRuntime{
 		muRealDomainSet: sync.RWMutex{},
-		realDomainSet:   make(map[string]struct{}, realDomainSetCapacity),
-		realDomainOrd:   make([]string, 0, realDomainSetCapacity),
+		// Capacity is only an eviction bound (see rememberRealDomain), not a
+		// required preallocation: let the map/slice grow on demand instead of
+		// eagerly allocating room for 8192 entries (~1MB) at startup.
+		realDomainSet:   make(map[string]struct{}),
+		realDomainOrd:   nil,
 		tcpSniffNegSet:  make(map[tcpSniffNegKey]tcpSniffNegEntry),
 		negJanitorStop:  make(chan struct{}),
 		negJanitorDone:  make(chan struct{}),
